@@ -1,0 +1,127 @@
+target_column,mapping_expression
+"Model Container ID
+(Model's Deliverable Number)",deliverableName
+AssetName_3,join2['AssetName_3']
+AssetHierarchyCategory,join2['HS2_Class']
+AssetDescription_3,lodm_df['ClassName']
+COBie Type,blank
+UAID_3,join2['UAID_3']
+UAID_2,join2['UAID_2']
+Design Element Schedule No.,Blank
+Owner,MWCC-EKJV
+LOD,3
+LOI,3
+Owner.1,MWCC-EKJV
+LOD.1,4
+LOI.1,4
+Owner.2,MWCC-EKJV
+LOD.2,5
+LOI.2,5
+Uniclass 2015,join2['UniClassID']
+Start Chainage,join2['startChainage']
+End Chainage,join2['endChainage']
+OSGB Easting,join2['OsgbEasting']
+OSGB Northing,join2['OsgbNorthing']
+Native ID,blank
+IFC ID,blank
+PrimaryDiscipline,blank
+FunctioningGrouping,blank
+Primary Asset,blank
+ElementCode,blank
+Discipline,3rd part of model file name
+Classification,join2['UniClassID']
+Presentation,M
+Description,control_files_df['Level Description']
+Layer,"Concatanation of AG:AK - joined with ""-"""
+Start,join2['startChainage']
+End,join2['endChainage']
+Active/Withdrawn,Active
+Subassembly Code,blank
+Order,blank
+Unnamed: 43,"Existing MPDT, if UAID not present in existing MPDT then leave blank"
+  ,blank
+strAttr Scope Level 2 UAID ,join2['UAID_2']
+strAttr Asset Name 2 ,join1['AssetName']
+strAttr Asset Description 2 ,join1['Description']
+strAttr HS2 Asset Classification ,join2['ClassCode']
+numAttr Start Chainage ,join2['StartChainage']
+numAttr End Chainage ,join2['EndChainage']
+numAttr OSGB Easting  ,join2['OsgbEasting']
+numAttr OSGB Northing ,join2['OsgbNorthing']
+numAttr Snake Grid Easting ,join2['snakeGridEasting']
+numAttr Snake Grid Northing ,join2['snakeGridNorthing']
+strAttr Scope Level 1 UAID ,join2['UAID_1']
+strAttr Uniclass 2015 ,join2['UniClassID']
+strAttr Scope Level 3 UAID ,join2['UAID_3']
+strAttr Reference Number ,join2['Com_RfrncNmbr']
+strAttr Type (Layer description text) ,join2['Com_Typ']
+strAttr Description ,join2['Com_Dscrptn']
+strAttr Material ,join2['Mtrl']
+strAttr Changes Considered  ,join2['CM_Chg']
+strAttr Contract Requirements Technical ,join2['CM_CRT']
+strAttr Is Configuration Item (Y/N) ,join2['CM_ISCI']
+strAttr Standards Baseline ,join2['CM_StdBL']
+numAttr Length (m) ,join2['Lngthm']
+numAttr Net Volume (m³) ,join2['NetVolume']
+intAttr Design Life ,join2['DsgnLf']
+numAttr Width Average (m) ,join2['WidthAvrgm']
+strAttr Third Party Name ,join2['ThrdPrty']
+strAttr Thickness of Lining (mm) ,join2['ThknsLng']
+numAttr Volume (m³) ,join2['Vlm']
+strAttr Height (m) ,join2['Hghtm']
+numAttr Height (max) (m) ,join2['HghtMx']
+numAttr Maximum Permitted Weight ,join2['MxmmPrmttdWght']
+numAttr Rebar Density (kg/m³) ,join2['RebarDensity']
+numAttr Rebar Volume (m³) ,join2['RebarVolume']
+"strAttr Structure Type
+(Unique type identifier) ",join2['StrctrlT']
+strAttr External Perimeter ,join2['ExtrnlPrmtr']
+strAttr Fire Rating ,join2['FrRtng']
+strAttr Infiltration Potential ,join2['InfltrtnPtntl']
+numAttr Thickness (max) (M) ,join2['ThcknssMxM']
+numAttr Wet Well Volume ,join2['WtWllVlm']
+numAttr Depth (m) ,join2['Dpth']
+numAttr Finish Invert Level ,join2['FnshInvrtLvl']
+numAttr Lowest Level (mAOD) ,join2['LwstLvl']
+strAttr Surround Material ,join2['SrrndMtrl']
+"numAttr Nominal Diameter (m)
+(Smallest dia. of asset) ",join2['NmnlDmtr']
+numAttr Maximum Loading (Tonnes/m²) ,join2['MxmmLdng']
+strAttr Mounting ,join2['Mntng']
+intAttr Diameter (External) (mm) ,join2['DmtrExtr']
+strAttr Design Flow Basis ,join2['DsgnFlwBss']
+intAttr Total Flood Storage Volume estimate (m3) ,join2['TtlFldStrgVlmEstmt']
+strAttr Flow Direction ,join2['FlwDrctn']
+numAttr Inlet Level (m AoD) ,join2['InltLvl']
+"strAttr Inlet Point
+(Osgb Coordinates) ",join2['InltPnt']
+numAttr Internal Perimeter (m) ,join2['IntrnlPrmtr']
+numAttr Invert Level (mAoD) ,join2['InvrtLvl']
+strAttr Material (Pipe) ,join2['MtrlPp']
+numAttr Maximum depth of flow ,join2['MxmmDpthOfFlw']
+numAttr Outflow Rate (l/s) ,join2['OtflwRt']
+numAttr Pump Duties (l/s) ,join2['PmpDts']
+numAttr Pumping Head (m) ,join2['PmpngHd']
+strAttr Pump Type ,join2['PmpTyp']
+numAttr Pipe Size (cm) ,join2['PpSz']
+strAttr Pipe Type ,join2['PpTyp']
+strAttr BS EN 124 class for gully top ,join2['BSEN124Clss']
+strAttr Gully Material ,join2['GllyMtrl']
+strAttr Gully Top Material ,join2['GllyTpMtrl']
+numAttr Depth (Min) m ,join2['DpthMn']
+strAttr Depth (max) (m) ,join2['DpthMx']
+strAttr Area (sq.m) ,join2['Com_Arsqm']
+numAttr Design Flow (l/s) ,join2['DsgnFlw']
+strAttr Pile Section Details ,join2['PlSctnDtls']
+intAttr Retained Height (m) ,join2['RtndHght']
+strAttr Diameter (Internal) (mm) ,join2['DmtrIntr']
+numAttr Nominal Surface Area ,join2['NmnlSrfcAr']
+strAttr Finishing – Formwork ,join2['FFwk']
+strAttr Finishing – Top Surface ,join2['Ftop']
+"intAttr Embedded Length (m)
+(Vertical embedded length) ",join2['EmbdddLngth']
+numAttr Net Plan Area (external)(m²) ,join2['NetPlanAreaExt']
+numAttr Gross Surface Area (internal) (m²) ,join2['GrossSurfaceAreaInt']
+numAttr Net Surface Area (external) (m²) ,join2['NetSurfaceAreaExt']
+numAttr Net Surface Area (internal) (m²) ,join2['NetSurfaceAreaInt']
+numAttr Plane formwork class (Angle of inclination in deg) ,join2['PlaneFormWorkClassIncl']

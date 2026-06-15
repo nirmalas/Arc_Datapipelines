@@ -1,0 +1,119 @@
+Overall Objective
+
+The core goal is to automate creation of ACBOS / MPDT files from L3 database/smartforms data for Level 2 assets.
+Requirement to generate MPDTs or ACBOS files (one per UAID_2) and upload them to ProjectWise. L3 Database → ACBOS / MPDT Excel → ProjectWise
+
+UserInput:
+TargetUAIDs - comma separated values 
+
+
+Input1 : 
+C:\Users\seethapn1094\OneDrive - ARCADIS\Documents\DataScience\HS2_L3Database\MPDT_Creation\Powershell\PWPS_Data_Extract_ACBOS_MPDT.ps1 
+- this script gets the list of all the files in projectwise with their latest revisions and update date. This script generates the output file "C:\Users\seethapn1094\OneDrive - ARCADIS\Documents\DataScience\HS2_L3Database\MPDT_Creation\Powershell\ACBOS MPDT.xlsx". The output file has a column named DocumentName, which can have values like 
+1MC06-CEK-BR-FRM-CS04_CL18-000006
+1MC06-ASC-BR-FRM-CS04_CL18-000005-ACBOS
+1MC06-ASC-BR-FRM-CS04_CL18-000006-ACBOS
+
+To get the highest revision of the files in projectwise, it should remove the -ACBOS in the document name and group and get the highest revision value. 
+
+Input2:
+
+Read the files from the location, 
+
+https://arcadiso365.sharepoint.com/teams/HS2ASC-RW/PMO/13%20-%20IM%20-%20Information%20Management/09%20-%20Attributes/04-L3_attributes/4%20-%20JSON%20creation/JSON%20Works%20Tracker_Sep%202025%20Onwards%20.xlsx?web=1&isSPOFile=1&xsdata=MDV8MDJ8fGI0N2IwZjZiMzU0YTQzMGExOGZmMDhkZWE0OTgxMGM2fDdmOTAwNTdkM2VhMDQ2ZmViMDdjZTA1Njg2MjcwODFifDB8MHw2MzkxMjkxNzAxNTY1OTEzNTl8VW5rbm93bnxWR1ZoYlhOVFpXTjFjbWwwZVZObGNuWnBZMlY4ZXlKRFFTSTZJbFJsWVcxelgwRlVVRk5sY25acFkyVmZVMUJQVEU5R0lpd2lWaUk2SWpBdU1DNHdNREF3SWl3aVVDSTZJbGRwYmpNeUlpd2lRVTRpT2lKUGRHaGxjaUlzSWxkVUlqb3hNWDA9fDF8TDJOb1lYUnpMekU1T20xbFpYUnBibWRmVGtkV2FVMVVVbWhaVkUxMFQxUmthbHBwTURCTlIwVjZURmRLYTA1WFVYUk5SMDVyVDFkVk1VNVVVbXBPUkVwcVFIUm9jbVZoWkM1Mk1pOXRaWE56WVdkbGN5OHhOemMzTXpJd01qRTBNVFF4fDdjODA4ZTc4NzViYTQ3NjliNzdmMDhkZWE0OTgxMGMzfGNkYjllODljNWM3ODRjOTRiZmY3N2VkMTc2MjNlNDRi&sdata=cW5BK2hoMmNjaVRUV3VVZTBsZUNOdHZrWUo2eUFRWlZhd2lqQ3BVMEx2cz0%3D&ovuser=7f90057d-3ea0-46fe-b07c-e0568627081b%2Cjames.borgese%40arcadis.com
+https://arcadiso365.sharepoint.com/teams/HS2ASC-RW/PMO/13%20-%20IM%20-%20Information%20Management/09%20-%20Attributes/04-L3_attributes/4%20-%20JSON%20creation/Archive/JSON%20Works%20Tracker%202025.xlsx?web=1&isSPOFile=1&xsdata=MDV8MDJ8fGI0N2IwZjZiMzU0YTQzMGExOGZmMDhkZWE0OTgxMGM2fDdmOTAwNTdkM2VhMDQ2ZmViMDdjZTA1Njg2MjcwODFifDB8MHw2MzkxMjkxNzAxNTY1OTEzNTl8VW5rbm93bnxWR1ZoYlhOVFpXTjFjbWwwZVZObGNuWnBZMlY4ZXlKRFFTSTZJbFJsWVcxelgwRlVVRk5sY25acFkyVmZVMUJQVEU5R0lpd2lWaUk2SWpBdU1DNHdNREF3SWl3aVVDSTZJbGRwYmpNeUlpd2lRVTRpT2lKUGRHaGxjaUlzSWxkVUlqb3hNWDA9fDF8TDJOb1lYUnpMekU1T20xbFpYUnBibWRmVGtkV2FVMVVVbWhaVkUxMFQxUmthbHBwTURCTlIwVjZURmRLYTA1WFVYUk5SMDVyVDFkVk1VNVVVbXBPUkVwcVFIUm9jbVZoWkM1Mk1pOXRaWE56WVdkbGN5OHhOemMzTXpJd01qRTBNVFF4fDdjODA4ZTc4NzViYTQ3NjliNzdmMDhkZWE0OTgxMGMzfGNkYjllODljNWM3ODRjOTRiZmY3N2VkMTc2MjNlNDRi&sdata=ZWVncjVpVUc4akI3OG1SQjE5aDA4Vno5L0pVYmNUMnZOMmhxN1A3aTRPND0%3D&ovuser=7f90057d-3ea0-46fe-b07c-e0568627081b%2Cjames.borgese%40arcadis.com
+https://arcadiso365.sharepoint.com/teams/HS2ASC-RW/PMO/13%20-%20IM%20-%20Information%20Management/09%20-%20Attributes/04-L3_attributes/4%20-%20JSON%20creation/Archive/JSON%20Works%20Tracker%202024.xlsx?web=1&isSPOFile=1&xsdata=MDV8MDJ8fGI0N2IwZjZiMzU0YTQzMGExOGZmMDhkZWE0OTgxMGM2fDdmOTAwNTdkM2VhMDQ2ZmViMDdjZTA1Njg2MjcwODFifDB8MHw2MzkxMjkxNzAxNTY1OTEzNTl8VW5rbm93bnxWR1ZoYlhOVFpXTjFjbWwwZVZObGNuWnBZMlY4ZXlKRFFTSTZJbFJsWVcxelgwRlVVRk5sY25acFkyVmZVMUJQVEU5R0lpd2lWaUk2SWpBdU1DNHdNREF3SWl3aVVDSTZJbGRwYmpNeUlpd2lRVTRpT2lKUGRHaGxjaUlzSWxkVUlqb3hNWDA9fDF8TDJOb1lYUnpMekU1T20xbFpYUnBibWRmVGtkV2FVMVVVbWhaVkUxMFQxUmthbHBwTURCTlIwVjZURmRLYTA1WFVYUk5SMDVyVDFkVk1VNVVVbXBPUkVwcVFIUm9jbVZoWkM1Mk1pOXRaWE56WVdkbGN5OHhOemMzTXpJd01qRTBNVFF4fDdjODA4ZTc4NzViYTQ3NjliNzdmMDhkZWE0OTgxMGMzfGNkYjllODljNWM3ODRjOTRiZmY3N2VkMTc2MjNlNDRi&sdata=cVl1bWxxQ1B0eUt3cU9hcXRnNkdVSWRnUmRpYU9VdVJDdmZRUndoS25DWT0%3D&ovuser=7f90057d-3ea0-46fe-b07c-e0568627081b%2Cjames.borgese%40arcadis.com
+
+or the local copy of them 
+"C:\Users\seethapn1094\OneDrive - ARCADIS\Documents\DataScience\HS2_L3Database\UpdatePW_ACBOS_MPDT\Input\JSON Works Tracker_Sep 2025 Onwards .xlsx"
+"C:\Users\seethapn1094\OneDrive - ARCADIS\Documents\DataScience\HS2_L3Database\UpdatePW_ACBOS_MPDT\Input\JSON Works Tracker 2024.xlsx"
+"C:\Users\seethapn1094\OneDrive - ARCADIS\Documents\DataScience\HS2_L3Database\UpdatePW_ACBOS_MPDT\Input\JSON Works Tracker 2025.xlsx"
+sheet_name = Central_Team
+
+consolidate all the files and have it as json_works_tracker_consolidated
+
+
+input3:
+Read the file "C:\Users\seethapn1094\OneDrive - ARCADIS\Documents\DataScience\HS2_L3Database\MPDT_Creation\L2 UAID-ACBOS_260129.xlsx" - 
+
+input4:
+Connect to L3 database and get all the relevant data from table AssetsScope3 and AssetsScope2. This should be downloaded to excel sheet and used for further reference. Based on the target_UAIDs the filtering can be applied to get only relevant rows and stored in excel for further reference. 
+
+input5: 
+Connect to smart forms API and get the relevant details. if not fallback to read the excel from local. "C:\Users\seethapn1094\OneDrive - ARCADIS\Documents\DataScience\HS2_L3Database\MPDT_Creation\SmartForms_RAW_MPDT_L2&L3.xlsx"
+
+input6:
+
+read the file C:/Users/seethapn1094/OneDrive - ARCADIS/Documents/DataScience/HS2_L3Database/MPDT_Creation/1MC06-ASC-IM-SCH-C002-000009_lodm.xlsx', sheet_name = 'CURRENT LoDM' - this gives the list of all the attributes associated with the uaid2
+
+input7:
+
+read the excel path= "C:/Users/seethapn1094/OneDrive - ARCADIS/Documents/DataScience/HS2_L3Database/MPDT_Creation/1MC06-ASC-IM-GDE-C002-000090_controlfile.xlsx" 
+
+input8: 
+
+read sample MPDT file and columns mapping_file = 'C:\Users\seethapn1094\OneDrive - ARCADIS\Documents\DataScience\HS2_L3Database\MPDT_Creation\C2-MPDT-Template-Mapping.xlsm', sheet_name='MPDT Element of Asset'. refer to ### 5. Read Sample MPDT File with mapping columns section in the notebook C:\Users\seethapn1094\OneDrive - ARCADIS\Documents\DataScience\HS2_L3Database\MPDT_Creation\mpdt_creation_v2.ipynb
+# need to include C3 template
+input9:
+
+read the ### 5. Read Sample MPDT File to Understand Structure, sample_mpdt_path = r'"C:\Users\seethapn1094\OneDrive - ARCADIS\Documents\DataScience\HS2_L3Database\MPDT_Creation\1MC07-CEK-BR-FRM-CS07_CL26-000005.xlsm"'
+sample_mpdt_df = pd.read_excel(sample_mpdt_path, sheet_name='MPDT Element of Asset', engine='openpyxl', header=1)  # Read with header at row 2 (index 1)
+
+Read the sample MPDT file to understand the structure and mapping requirements. refer to ### 5. Read Sample MPDT File to Understand Structure section in the notebook C:\Users\seethapn1094\OneDrive - ARCADIS\Documents\DataScience\HS2_L3Database\MPDT_Creation\mpdt_creation_v2.ipynb
+
+
+input10:
+sample ACBOS file - "C:\Users\seethapn1094\OneDrive - ARCADIS\Documents\DataScience\HS2_L3Database\ACBOS\6Jan26\1MC06-ASC-CV-FRM-CS03_CL05-000046-ACBOS.ACBOS"
+"C:\Users\seethapn1094\OneDrive - ARCADIS\Documents\DataScience\HS2_L3Database\ACBOS\6Jan26\1MC06-ASC-BR-FRM-CS03_CL05-000013-ACBOS.ACBOS" - Use these as template in creating the ACBOS file.
+
+
+intermediate_input
+Join the input1, input2 and input3 with the delivarablenames, latest_revision, updated date and uaid2/asset id columns . all this fiels will be help in deciding whether the output to be generated for the input UAID is an MPDT or ACBOS
+
+
+Process:
+
+-Use the script C:\Users\seethapn1094\OneDrive - ARCADIS\Documents\DataScience\HS2_L3Database\MPDT_Creation\Powershell\PWPS_Data_Extract_ACBOS_MPDT.ps1 to generate input1
+- For each target UAID, check if the UAID is present in L3 database and smartforms DB. refer ### 4. Filter a single record and match across all sources in the notebook C:\Users\seethapn1094\OneDrive - ARCADIS\Documents\DataScience\HS2_L3Database\MPDT_Creation\mpdt_creation_v2.ipynb- use the join2 df for later. 
+-for each target UAID, check the intermediate input to decide whether to create a MPDT or ACBOS and the latest revision. 
+
+
+for each target UAID2 decide MPDT or ACBOS. the classification logic should look into the C:\Users\seethapn1094\OneDrive - ARCADIS\Documents\DataScience\HS2_L3Database\UpdatePW_ACBOS_MPDT_V1\Input\ACBOS MPDT_FULL.xlsx or C:\Users\seethapn1094\OneDrive - ARCADIS\Documents\DataScience\HS2_L3Database\UpdatePW_ACBOS_MPDT_V1\Input\ACBOS MPDT.xlsx file and get the latest version of the file. Then use the works tracker files to check the correct filename for the asset. then use the L2 UAID-ACBOS_260129.xlsx list to check if the decision is correct. IF there are conflicts, then raise that as an issue instead of assuming.
+
+
+- Creates MPDT files for each asset using the template and populating with data from the merged sources.
+refer ### 6. Create MPDT Files for All Matching Assets in the notebook C:\Users\seethapn1094\OneDrive - ARCADIS\Documents\DataScience\HS2_L3Database\MPDT_Creation\mpdt_creation_v2.ipynb
+
+- create ACBOS file based on the ACBOS template files (input10) and use this script as reference to generate the ACBOS file for the targetC:\Users\seethapn1094\OneDrive - ARCADIS\Documents\DataScience\HS2_L3Database\ACBOS\6Jan26\compare_L3_ACBOS.ipynb
+
+- Once all the output files are generated, the files should be updated to projectwise using the pwps_dab module. 
+
+
+considerations:
+Text cleanup before matching
+column names could be slightly different - some use spacing and some use underscore etc
+use the folder C:\Users\seethapn1094\OneDrive - ARCADIS\Documents\DataScience\HS2_L3Database\UpdatePW_ACBOS_MPDT\ as reference for any other issues
+
+
+Folder Structure should be:
+Input - Copy/download all the inputs to the input folder.
+Output_<datetime> - everytime the output files are generated.
+output_pw_<datetime> - all the files that are to be moved to PW are placed here before moving. 
+Scripts - all the relevant python or powershell scripts.  
+
+
+
+1) while reading the files 'JSON Works Tracker_Sep 2025 Onwards .xlsx',  'JSON Works Tracker 2025.xlsx', 'JSON Works Tracker 2024.xlsx' it should read from  sheet_name = Central_Team.  WARNING  | main | Parquet cache skipped for PW_Extract (Unable to find a usable engine; tried using: 'pyarrow', 'fastparquet'.
+2) A suitable version of pyarrow or fastparquet is required for parquet support.
+Trying to import the above resulted in these errors:
+ - Missing optional dependency 'pyarrow'. pyarrow is required for parquet support. Use pip or conda to install pyarrow.
+ - Missing optional dependency 'fastparquet'. fastparquet is required for parquet support. Use pip or conda to install fastparquet.). Excel cache written to C:\Users\seethapn1094\OneDrive - ARCADIS\Documents\DataScience\HS2_L3Database\UpdatePW_ACBOS_MPDT_V1\Input\DB_Cache\PW_Extract.xlsx.
+
+
+
+
+ Script	Command	Speed	When to run
+step2a_db_cache.py	python Scripts/step2a_db_cache.py	Slow (10–30 min)	When DB / SmartForms / Trackers change
+step2b_asset_deliverables.py	python Scripts/step2b_asset_deliverables.py	Fast (~5s)	When ACBOS MPDT_FULL.xlsx or L2 mapping changes
+step2c_validate_inputs.py	python Scripts/step2c_validate_inputs.py	Instant	Before running steps 3–5
+

@@ -1,0 +1,67 @@
+{
+  "output_directory": "Output",
+  "log_level": "INFO",
+  "batch_size": 5,
+  "target_uaid2": ["HS2-00002NSXW", "HS2-00002TG2C"],
+  "file_type": "AUTO",
+  "missing_in_pw_file_type": "MPDT",
+  "fetch_external": {
+    "db": false,
+    "smartforms": false,
+    "pw_extract": false,
+    "_note": "db=true: query L3 SQL Server, overwrite Input/l3_assets_scope_data.xlsx. smartforms=true: fetch via API, overwrite Input/SmartForms_RAW_MPDT_L2&L3.xlsx. pw_extract=true: run Scripts/PWPS_Data_Extract.ps1, overwrite Input/ACBOS MPDT.xlsx. Steps 2+ always read from these Input/ files regardless of these flags."
+  },
+  "allow_scope3_fallback_when_pw_missing": true,
+  "uaid_type_map": {},
+  "not_in_pw_type_map": {
+    
+  },
+  "build_join_results": false,
+  "export_join_results": false,
+  "fallback_asset_type_map": [],
+  "db": {
+    "connection_string": "Driver={ODBC Driver 17 for SQL Server};Server=<server>;Database=HS2_L3Database;UID=hs2admin;PWD=KU%[%NM{Y50!Q*1o_}lD#<V[;",
+    "_note": "Replace <server> above with your actual SQL Server hostname, e.g. hs2-db-prd.database.windows.net,1433",
+    "tables": [
+      "AssetsScope2",
+      "AssetsScope3"
+    ]
+  },
+  "smartforms_api": {
+    "enabled": false,
+    "tenant_id": "7f90057d-3ea0-46fe-b07c-e0568627081b",
+    "client_id": "",
+    "scope": "https://api.bentley.com/.default",
+    "base_url": "https://api.bentley.com/assetregistry"
+  },
+  "pw": {
+    "datasource": "arcadis-uk-pw.bentley.com:arcadis-uk-07",
+    "username": "_asc_user_automation",
+    "ps1_download": "Scripts/PWPS_Download_MPDT.ps1",
+    "ps1_extract": "Scripts/PWPS_Data_Extract.ps1",
+    "ps1_upload": "Scripts/PWPS_Upload_PW.ps1"
+  },
+  "paths": {
+    "pw_extract": "Input/ACBOS MPDT.xlsx",
+    "matchup_file": "Input/Planting MPDT Asset Matchup.xlsx",
+    "target_uaid2_file": "",
+    "pw_extract_full": "Input/ACBOS MPDT_FULL.xlsx",
+    "l3_assets_scope_data": "Input/l3_assets_scope_data.xlsx",
+    "join_results": "Input/join_results.xlsx",
+    "l2_uaid_acbos": "Input/L2 UAID-ACBOS_260129.xlsx",
+    "lodm": "Input/1MC06-ASC-IM-SCH-C002-000009_lodm.xlsx",
+    "control_file": "Input/1MC06-ASC-IM-GDE-C002-000090_controlfile.xlsx",
+    "mpdt_template": "Input/C2-MPDT-Template-Mapping.xlsm",
+    "sample_mpdt": "Input/1MC07-CEK-BR-FRM-CS07_CL26-000005.xlsm",
+    "smartforms_fallback": "Input/SmartForms_RAW_MPDT_L2&L3.xlsx",
+    "acbos_template_dir": "Input/ACBOS_Templates",
+    "tracker_sep2025": "Input/JSON Works Tracker_Sep 2025 Onwards .xlsx",
+    "tracker_2025": "Input/JSON Works Tracker 2025.xlsx",
+    "tracker_2024": "Input/JSON Works Tracker 2024.xlsx",
+    "db_cache_dir": "Input/DB_Cache"
+  },
+  "tracker_sheet_name": "Central_Team",
+  "publish": false,
+  "check_version": true,
+  "max_log_files": 10
+}

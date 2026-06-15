@@ -1,0 +1,245 @@
+End-to-End Requirement Specification
+Project: Automated Deliverable Classification & MPDT Generation Pipeline
+
+1. Objective
+Develop a Python-based automation pipeline to:
+
+Retrieve (or read locally) deliverables and metadata
+Identify the latest version of each deliverable
+Classify deliverables as MPDT or ACBOS based on metadata
+Generate a structured Excel output of classification results
+Generate MPDT files dynamically using a template and available data sources
+
+
+2. Key Configuration
+
+2.1 User-Defined Parameters
+The system must support the following configurable parameters:
+Pythondata_source_mode = "local" | "source"
+input_pw_file = "<path_to_latest_pw_document_input>"
+output_directory = "<output_folder_path>"
+mpdt_template_path = "<path_to_template>"
+
+2.2 Behaviour Based on data_source_mode
+Mode    Behaviour
+local   Use existing locally stored datasets
+source  Trigger external data fetch module
+
+3. Architecture Overview
+The solution must be modular with the following components:
+/project_root
+│
+├── main
+├── config
+├── data_fetcher     # External system integration (slow)
+├── data_loader      # Local file loader
+├── pw_processor      # PW document processing
+├── classifier        # MPDT vs ACBOS logic
+├── excel_generator   # Output Excel creation
+├── mpdt_generator    # MPDT file generation
+├── utils             # Common helpers
+
+
+4. Data Retrieval Module
+4.1 data_fetcher.py (Only used when data_source_mode == "source")
+Purpose:
+Fetch data from external systems.
+
+Responsibilities:
+
+    Connect to:
+
+        ProjectWise
+        L3 Database
+        SmartForms
+
+
+    Fetch:
+
+        Latest deliverables
+        Metadata
+        Attribute values
+
+
+
+Constraints:
+
+Must be independent of main processing
+Must allow reuse
+Must support caching (optional but recommended)
+
+
+4.2 data_loader.py (Local Mode)
+Purpose:
+Load pre-existing data files (Excel/CSV/JSON)
+
+5. ProjectWise Deliverable Processing
+5.1 Input
+
+Input1 = Latest ProjectWise document dataset
+(Contains deliverables, versions, metadata)
+
+Contains only the requested columns.
+Drops rows with null DocumentName or ASSET_ID.
+Filters ASSET_ID to those starting with HS2-.
+Deduplicates by (DocumentName, ASSET_ID) using numeric Version (e.g., P07.1 → 7.1) then FileUpdated.
+Output file: asset_deliverables.xlsx .
+
+
+5.2 Processing Requirements
+
+Identify latest version of each deliverable
+Extract:
+
+Asset Name
+Deliverable Name
+Metadata attributes
+
+
+
+6. Classification Logic
+6.1 Rules
+For each deliverable:
+IF metadata indicates MPDT:
+    classification = "MPDT"
+ELSE IF metadata indicates ACBOS:
+    classification = "ACBOS"   
+ELSE:
+    classification = "NA"
+
+6.2 Metadata Usage
+
+Use metadata fields from PW document
+No hardcoding of values — must be configurable where possible
+
+
+7. Classification Output (Excel)
+7.1 File Requirement
+Generate an Excel file:
+output_directory/classification_output.xlsx
+
+7.2 Structure
+
+
+Column Name                 Description 
+Asset Name                  Asset identifier
+Deliverable Name            Name of deliverable
+File Type                   MPDT / ACBOS
+Metadata                    Key attributes used in classification
+Additional Info             Optional relevant data
+
+7.3 Requirements
+
+Must include all processed deliverables
+Must be structured and clean (no nested formats)
+Use pandas for generation
+
+
+8. MPDT Generation
+8.1 Input Condition
+Only process rows where:
+File Type == "MPDT"
+
+
+8.2 Data Sources for MPDT
+
+L3 Database
+SmartForms
+PW Metadata
+
+
+8.3 Template-Based Generation
+
+Use predefined MPDT template
+Template must NOT be modified structurally
+The columns and the colour formatting of the columns in the excel template should be retained as such.  
+Populate values dynamically based on the availability of the values in the control sheets input set. 
+
+Once the columns and values are populated, then follow dynamic columns handling.
+
+
+8.4 Dynamic Column Handling
+Critical Requirement:
+
+Columns are NOT fixed, Include columns ONLY if:
+
+    Attribute exists for the asset
+    Value exists in L3 or SmartForms
+
+The blackening of the cells in the excel is done to UAID3 based on whether the attribute(columnname) is relevant for that asset(UAID3). 
+If the attribute is relevant for the asset but do not have a value in the data sources, then that should be left blank but not coloured in black.
+
+
+
+8.5 Output Behaviour
+For each MPDT:
+
+Generate individual file OR structured dataset
+Output should:
+
+Match template format
+Contain only valid attributes
+Avoid empty columns at the bottom.
+
+9. ACBOS file creation
+
+9.1 
+
+10. Non-Functional Requirements
+10.1 Performance
+External data fetch must be isolated due to latency
+All the values should be configurable with a json or as parameter and each module could be run individually to check the intermediate outputs
+
+
+10.2 Logging
+
+Log:
+
+Classification decisions
+Missing metadata
+MPDT generation issues
+
+
+
+10.3 Error Handling
+
+Handle:
+
+Missing attributes
+Invalid metadata
+Template mismatch
+
+
+
+10.4 Maintainability
+
+Modular design
+Avoid hardcoding values
+
+
+11. Optional Enhancements
+
+Add caching for fetched data
+Add retry logic for external systems
+Add validation rules before MPDT generation
+
+
+12. Implementation Notes for GitHub Copilot
+When generating code:
+
+Use:
+
+pandas for data processing
+openpyxl or xlsxwriter for Excel
+
+
+Follow modular imports
+Avoid global variables
+
+13. Explicit Constraints
+
+DO NOT implement any logic related to removed sections 
+DO NOT assume fixed schema for MPDT columns
+DO NOT generate MPDT files for ACBOS
+MUST rely on metadata-driven classification
+MUST support both local and source modes

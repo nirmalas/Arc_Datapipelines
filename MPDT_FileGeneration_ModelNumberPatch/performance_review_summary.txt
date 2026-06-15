@@ -1,0 +1,56 @@
+MPDT/ACBOS performance review and optimisation summary
+
+Root cause found
+- The runtime pattern strongly suggests a fixed input-preparation cost: one MPDT takes ~40 minutes, while 400 MPDTs take ~60 minutes.
+- The code spent most of its time reading large Excel workbooks and rebuilding temporary join data, not writing each MPDT.
+- Several large tables were loaded via openpyxl every run, especially Scope3, SmartForms caches, LoDM/control files, PW extract, and mapping files.
+- join_results.xlsx was built/exported during source load even though it is diagnostic data, not required for final MPDT generation.
+- During MPDT batch generation, Scope3 and SmartForms L3 were filtered repeatedly for each UAID and each L3 row.
+- Per-target debug CSV files were written unconditionally.
+
+Changes made
+1. Fast local table cache
+   - utils/common.py now reads cache in this order: .pkl, .parquet, .xlsx.
+   - When Excel is read, a .pkl cache is created automatically for faster future runs.
+   - write_table_cache now writes .pkl first, then optional parquet, and skips very large duplicate Excel cache files by default.
+   - To force large Excel cache files for manual inspection, set MPDT_WRITE_LARGE_EXCEL_CACHE=1.
+
+2. Source-level Excel caching
+   - data_loader/local_loader.py now source-validates Excel cache files using path, file size, and mtime.
+   - PW extract, L2 mapping, Scope3, LoDM, and control file reads now use fast pickle caches on repeated runs.
+   - Scope3 now checks l3_assets_scope_data.pkl before parquet/Excel; this avoids requiring pyarrow/fastparquet.
+
+3. Removed unnecessary join_results Excel export from normal runs
+   - join_results is now skipped during normal source load.
+   - To rebuild it, set build_join_results=true in config.
+   - To export it to a file, set export_join_results=true in config.
+
+4. Batch indexing for MPDT generation
+   - mpdt_generator/generator.py now builds lookup indexes once per batch:
+     - Scope2 by UAID_2
+     - SmartForms L2 by UAID_2
+     - Scope3 grouped by parent UAID_2
+     - SmartForms L3 by UAID_3
+     - L2 mapping by UAID_2
+   - This avoids repeated full-table scans for every output file.
+
+5. Debug output is now optional
+   - Per-target debug CSVs are disabled by default.
+   - Enable with debug_mpdt_generation=true in config.
+
+6. Previous correctness fixes retained
+   - MPDT checkerboard/column deletion v2 fix is retained.
+   - ACBOS template/schema preservation fix is retained.
+
+Expected impact
+- First run after applying this patch may still be slow if no .pkl caches exist, because the large Excel files must be read once.
+- Subsequent runs should spend far less time in input preparation because the script will load .pkl caches instead of large Excel workbooks.
+- Batch generation should scale better because the large DataFrames are indexed once, not repeatedly scanned per UAID.
+
+Files included
+- main.py
+- utils/common.py
+- data_loader/local_loader.py
+- mpdt_generator/generator.py
+- mpdt_generator/acbos_generator.py
+- mpdt_performance_optimization.patch

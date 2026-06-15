@@ -1,0 +1,1196 @@
+Binary files mpdt_repo/MPDT_FileGeneration-main/Input/DB_Cache/AssetsScope2_full.pkl and opt_repo/Input/DB_Cache/AssetsScope2_full.pkl differ
+Binary files mpdt_repo/MPDT_FileGeneration-main/Input/DB_Cache/excel_ACBOS MPDT.pkl and opt_repo/Input/DB_Cache/excel_ACBOS MPDT.pkl differ
+diff -ruN '--exclude=__pycache__' '--exclude=Logs' '--exclude=Output' "mpdt_repo/MPDT_FileGeneration-main/Input/DB_Cache/excel_ACBOS MPDT.pkl.meta.json" "opt_repo/Input/DB_Cache/excel_ACBOS MPDT.pkl.meta.json"
+--- "mpdt_repo/MPDT_FileGeneration-main/Input/DB_Cache/excel_ACBOS MPDT.pkl.meta.json"	1970-01-01 00:00:00.000000000 +0000
++++ "opt_repo/Input/DB_Cache/excel_ACBOS MPDT.pkl.meta.json"	2026-06-04 08:15:19.398788886 +0000
+@@ -0,0 +1,7 @@
++{
++  "source": {
++    "path": "/mnt/data/opt_repo/Input/ACBOS MPDT.xlsx",
++    "mtime_ns": 1780554948000000000,
++    "size": 426687
++  }
++}
+\ No newline at end of file
+Binary files mpdt_repo/MPDT_FileGeneration-main/Input/DB_Cache/l2_uaid_acbos.pkl and opt_repo/Input/DB_Cache/l2_uaid_acbos.pkl differ
+diff -ruN '--exclude=__pycache__' '--exclude=Logs' '--exclude=Output' mpdt_repo/MPDT_FileGeneration-main/Input/DB_Cache/l2_uaid_acbos.pkl.meta.json opt_repo/Input/DB_Cache/l2_uaid_acbos.pkl.meta.json
+--- mpdt_repo/MPDT_FileGeneration-main/Input/DB_Cache/l2_uaid_acbos.pkl.meta.json	1970-01-01 00:00:00.000000000 +0000
++++ opt_repo/Input/DB_Cache/l2_uaid_acbos.pkl.meta.json	2026-06-04 08:15:19.739064496 +0000
+@@ -0,0 +1,7 @@
++{
++  "source": {
++    "path": "/mnt/data/opt_repo/Input/L2 UAID-ACBOS_260129.xlsx",
++    "mtime_ns": 1780554948000000000,
++    "size": 178227
++  }
++}
+\ No newline at end of file
+diff -ruN '--exclude=__pycache__' '--exclude=Logs' '--exclude=Output' mpdt_repo/MPDT_FileGeneration-main/data_loader/local_loader.py opt_repo/data_loader/local_loader.py
+--- mpdt_repo/MPDT_FileGeneration-main/data_loader/local_loader.py	2026-06-04 06:35:48.000000000 +0000
++++ opt_repo/data_loader/local_loader.py	2026-06-04 08:16:05.398190301 +0000
+@@ -18,6 +18,9 @@
+     as_upper_key,
+     read_table_any,
+     write_table_cache,
++    cache_signature,
++    read_df_cache,
++    write_df_cache,
+ )
+ 
+ # Column name variants for ID matching
+@@ -47,6 +50,25 @@
+     return df
+ 
+ 
++def _read_excel_with_cache(
++    path: Path,
++    cache_dir: Path,
++    cache_name: str,
++    logger: logging.Logger,
++    **read_excel_kwargs,
++) -> pd.DataFrame:
++    """Read an Excel sheet once, then reuse a source-validated pickle cache."""
++    sig = cache_signature(path)
++    cache_path = cache_dir / f"{cache_name}.pkl"
++    cached = read_df_cache(cache_path, sig, logger)
++    if cached is not None:
++        logger.info("%s loaded from fast cache: %d rows", cache_name, len(cached))
++        return cached
++    df = pd.read_excel(path, **read_excel_kwargs)
++    write_df_cache(df, cache_path, sig, logger)
++    return df
++
++
+ # ---------------------------------------------------------------------------
+ # Individual loaders
+ # ---------------------------------------------------------------------------
+@@ -62,7 +84,8 @@
+         path = (workspace / rel).resolve()
+         if path.exists():
+             try:
+-                df = pd.read_excel(path, dtype=str, engine="openpyxl")
++                cache_dir = workspace / paths.get("db_cache_dir", "Input/DB_Cache")
++                df = _read_excel_with_cache(path, cache_dir, f"excel_{path.stem}", logger, dtype=str, engine="openpyxl")
+                 logger.info("PW extract loaded from '%s': %d rows", path.name, len(df))
+                 return df
+             except PermissionError:
+@@ -88,7 +111,8 @@
+         logger.warning("L2 mapping not found: %s", path)
+         return pd.DataFrame()
+ 
+-    df = pd.read_excel(path, dtype=str, engine="openpyxl")
++    cache_dir = workspace / cfg.get("paths", {}).get("db_cache_dir", "Input/DB_Cache")
++    df = _read_excel_with_cache(path, cache_dir, "l2_uaid_acbos", logger, dtype=str, engine="openpyxl")
+     # Normalise key columns
+     rename = {}
+     for c in df.columns:
+@@ -179,12 +203,26 @@
+     paths = cfg.get("paths", {})
+     cache_dir = workspace / paths.get("db_cache_dir", "Input/DB_Cache")
+ 
+-    # Check parquet cache in DB_Cache first (fast)
++    # Check pickle/parquet cache in DB_Cache first (fast). Pickle does not
++    # require pyarrow/fastparquet and is usually fastest for local reruns.
++    pkl_cache = cache_dir / "l3_assets_scope_data.pkl"
++    if pkl_cache.exists():
++        try:
++            df = pd.read_pickle(pkl_cache)
++            logger.info("AssetsScope3 loaded from pickle cache '%s': %d rows", pkl_cache.name, len(df))
++            return df
++        except Exception as exc:
++            logger.warning("Could not read scope3 pickle cache '%s': %s", pkl_cache.name, exc)
++
+     parquet_cache = cache_dir / "l3_assets_scope_data.parquet"
+     if parquet_cache.exists():
+         try:
+             df = pd.read_parquet(parquet_cache)
+             logger.info("AssetsScope3 loaded from parquet cache '%s': %d rows", parquet_cache.name, len(df))
++            try:
++                df.to_pickle(pkl_cache)
++            except Exception:
++                pass
+             return df
+         except Exception as exc:
+             logger.warning("Could not read scope3 parquet cache '%s': %s", parquet_cache.name, exc)
+@@ -196,15 +234,16 @@
+ 
+     if xlsx_src.exists():
+         try:
+-            df = pd.read_excel(xlsx_src, dtype=str, engine="openpyxl")
++            df = _read_excel_with_cache(xlsx_src, cache_dir, "l3_assets_scope_data", logger, dtype=str, engine="openpyxl")
+             logger.info("AssetsScope3 loaded from updated input '%s': %d rows", xlsx_src.name, len(df))
+             # Save parquet cache to DB_Cache for fast future loads
+             cache_dir = workspace / cfg.get("paths", {}).get("db_cache_dir", "Input/DB_Cache")
+             parquet_cache = cache_dir / "l3_assets_scope_data.parquet"
+             try:
+                 cache_dir.mkdir(parents=True, exist_ok=True)
++                df.to_pickle(cache_dir / "l3_assets_scope_data.pkl")
+                 df.to_parquet(parquet_cache, index=False)
+-                logger.info("Saved scope3 parquet cache: %s", parquet_cache.name)
++                logger.info("Saved scope3 pickle/parquet cache: %s", parquet_cache.name)
+             except Exception as pexc:
+                 logger.warning("Could not save scope3 parquet cache: %s", pexc)
+             return df
+@@ -251,25 +290,22 @@
+     if "__join_key__" in joined.columns:
+         joined.drop(columns=["__join_key__"], inplace=True)
+ 
++    # Writing this merged diagnostic file to Excel is extremely expensive for
++    # large SmartForms/Scope3 inputs. Keep it disabled by default; enable with
++    # config: {"export_join_results": true} only when debugging the join.
++    if not bool(cfg.get("export_join_results", False)):
++        logger.info("join_results built in memory only (%d rows, %d cols); Excel export disabled.", len(joined), len(joined.columns))
++        return joined
++
+     out_rel = cfg.get("paths", {}).get("join_results", "Input/join_results.xlsx")
+     out_path = (workspace / out_rel).resolve()
+     out_path.parent.mkdir(parents=True, exist_ok=True)
+     try:
+-        joined.to_excel(out_path, index=False, engine="openpyxl")
++        # Prefer pickle cache for speed; Excel export is just for manual inspection.
++        write_table_cache(joined, out_path.with_suffix(""), logger)
+         logger.info("join_results exported: %s (%d rows, %d cols)", out_path, len(joined), len(joined.columns))
+     except Exception as exc:
+-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+-        fallback = out_path.with_name(f"{out_path.stem}_{ts}{out_path.suffix}")
+-        try:
+-            joined.to_excel(fallback, index=False, engine="openpyxl")
+-            logger.warning(
+-                "Could not write join_results '%s' (%r). Wrote fallback file: %s",
+-                out_path,
+-                exc,
+-                fallback,
+-            )
+-        except Exception as exc2:
+-            logger.warning("Could not write join_results '%s' or fallback '%s': %r / %r", out_path, fallback, exc, exc2)
++        logger.warning("Could not write join_results '%s': %r", out_path, exc)
+ 
+     return joined
+ 
+@@ -290,7 +326,8 @@
+     if not path.exists():
+         logger.warning("LoDM file not found: %s", path)
+         return pd.DataFrame()
+-    df = pd.read_excel(path, sheet_name="CURRENT LoDM", dtype=str, engine="openpyxl")
++    cache_dir = workspace / cfg.get("paths", {}).get("db_cache_dir", "Input/DB_Cache")
++    df = _read_excel_with_cache(path, cache_dir, "lodm_current", logger, sheet_name="CURRENT LoDM", dtype=str, engine="openpyxl")
+     logger.info("LoDM loaded: %d rows, %d cols", len(df), len(df.columns))
+     return df
+ 
+@@ -303,6 +340,13 @@
+         logger.warning("Control file not found: %s", path)
+         return pd.DataFrame()
+ 
++    cache_dir = workspace / cfg.get("paths", {}).get("db_cache_dir", "Input/DB_Cache")
++    sig = cache_signature(path)
++    cached = read_df_cache(cache_dir / "control_file_combined.pkl", sig, logger)
++    if cached is not None:
++        logger.info("Control file loaded from fast cache: %d rows", len(cached))
++        return cached
++
+     SKIP_SHEETS = {"cover page", "pr products", "calcs"}
+     try:
+         xl = pd.ExcelFile(path, engine="openpyxl")
+@@ -317,6 +361,7 @@
+                 pass
+         if dfs:
+             combined = pd.concat(dfs, ignore_index=True)
++            write_df_cache(combined, cache_dir / "control_file_combined.pkl", sig, logger)
+             logger.info("Control file loaded: %d rows from %d sheets", len(combined), len(dfs))
+             return combined
+     except Exception as e:
+@@ -392,7 +437,7 @@
+     if not path.exists():
+         logger.warning("Sample MPDT file not found: %s", path)
+         return []
+-    df = pd.read_excel(path, sheet_name="MPDT Element of Asset", engine="openpyxl", header=1)
++    df = pd.read_excel(path, sheet_name="MPDT Element of Asset", engine="openpyxl", header=1, nrows=0)
+     logger.info("Sample MPDT columns loaded: %d columns", len(df.columns))
+     return list(df.columns)
+ 
+@@ -442,8 +487,12 @@
+ # All-in-one loader (used by main pipeline)
+ # ---------------------------------------------------------------------------
+ 
+-def load_all_sources(workspace: Path, cfg: dict, logger: logging.Logger) -> dict:
+-    """Load all required data sources and return as a dict."""
++def load_all_sources(workspace: Path, cfg: dict, logger: logging.Logger, target_uaids: list[str] | None = None) -> dict:
++    """Load all required data sources and return as a dict.
++
++    target_uaids is accepted for future source filtering; current implementation
++    still loads complete canonical tables but avoids unnecessary Excel diagnostics.
++    """
+     logger.info("Loading all local data sources...")
+ 
+     pw_df = load_pw_extract(workspace, cfg, logger)
+@@ -451,7 +500,9 @@
+     scope2_df = load_scope2(workspace, cfg, logger)
+     scope3_df = load_scope3(workspace, cfg, logger)
+     sf_l2, sf_l3 = load_smartforms(workspace, cfg, logger)
+-    join_results_df = _export_join_results(workspace, cfg, scope3_df, sf_l3, logger)
++    join_results_df = _export_join_results(workspace, cfg, scope3_df, sf_l3, logger) if bool(cfg.get("build_join_results", False)) else pd.DataFrame()
++    if join_results_df.empty:
++        logger.info("join_results merge skipped during source load (set build_join_results=true to enable).")
+     lodm_df = load_lodm(workspace, cfg, logger)
+     control_df = load_control_file(workspace, cfg, logger)
+     mapping_dict = load_mpdt_mapping(workspace, cfg, logger)
+diff -ruN '--exclude=__pycache__' '--exclude=Logs' '--exclude=Output' mpdt_repo/MPDT_FileGeneration-main/main.py opt_repo/main.py
+--- mpdt_repo/MPDT_FileGeneration-main/main.py	2026-06-04 06:35:48.000000000 +0000
++++ opt_repo/main.py	2026-06-04 08:13:12.361776334 +0000
+@@ -608,7 +608,7 @@
+         sources = {}
+         if step in ("all", "step4", "step5"):
+             from data_loader.local_loader import load_all_sources
+-            sources = load_all_sources(workspace, cfg, logger.getChild("loader"))
++            sources = load_all_sources(workspace, cfg, logger.getChild("loader"), target_uaids=target_uaid2)
+ 
+         # Step 4: Generate MPDT
+         if step in ("all", "step4"):
+diff -ruN '--exclude=__pycache__' '--exclude=Logs' '--exclude=Output' mpdt_repo/MPDT_FileGeneration-main/mpdt_generator/acbos_generator.py opt_repo/mpdt_generator/acbos_generator.py
+--- mpdt_repo/MPDT_FileGeneration-main/mpdt_generator/acbos_generator.py	2026-06-04 06:35:48.000000000 +0000
++++ opt_repo/mpdt_generator/acbos_generator.py	2026-06-04 08:12:17.010136698 +0000
+@@ -19,7 +19,7 @@
+ import xml.etree.ElementTree as ET
+ import zipfile
+ from pathlib import Path
+-from typing import Any
++from typing import Any, NamedTuple
+ from xml.dom import minidom
+ 
+ import pandas as pd
+@@ -56,58 +56,132 @@
+ # Template extraction
+ # ---------------------------------------------------------------------------
+ 
++class AcbosTemplate(NamedTuple):
++    """Parsed pieces of a sample/template .ACBOS package."""
++    path: Path
++    bins: list[tuple[str, Path]]
++    attr_metadata: dict[str, dict[str, str]]
++    attr_order: list[str]
++    classes: set[str]
++
++
+ def extract_template_data(
+     template_path: Path,
+     extract_dir: Path,
+     logger: logging.Logger,
+-) -> tuple[dict[str, Path], dict]:
++) -> AcbosTemplate:
+     """
+-    Open template ACBOS (ZIP) and extract:
+-      bins — {"SETUP.BIN": Path, "KEY.BIN": Path}
+-      metadata — {attr_name: {"DefinitionId": ..., "DefinitionWsGuid": ...}}
++    Open template ACBOS (ZIP) and extract the parts that must be preserved.
++
++    Important details:
++      * Setup.BIN/Key.BIN archive names are preserved exactly as in the sample.
++      * Attribute order and DefinitionId/DefinitionWsGuid values are copied from
++        the sample Data.XML.
++      * Only attributes present in the sample template are later written, so
++        generated ACBOS files do not gain extra columns/attributes from source
++        DataFrame housekeeping columns.
+     """
+-    bins: dict[str, Path] = {}
+-    metadata: dict = {}
++    bins: list[tuple[str, Path]] = []
++    metadata: dict[str, dict[str, str]] = {}
++    attr_order: list[str] = []
++    classes: set[str] = set()
++
++    template_extract_dir = extract_dir / sanitize_filename(template_path.stem)
++    template_extract_dir.mkdir(parents=True, exist_ok=True)
+ 
+     with zipfile.ZipFile(template_path, "r") as zf:
+         for member in zf.namelist():
+-            name_up = member.upper()
+-            if "SETUP.BIN" in name_up or "KEY.BIN" in name_up:
+-                dest = extract_dir / Path(member).name
++            name = Path(member).name
++            name_up = name.upper()
++            if name_up in {"SETUP.BIN", "KEY.BIN"}:
++                dest = template_extract_dir / name
+                 with zf.open(member) as src, open(dest, "wb") as dst:
+                     dst.write(src.read())
+-                bins[Path(member).name.upper()] = dest
++                bins.append((member, dest))
+             elif name_up.endswith(".XML"):
+                 with zf.open(member) as f:
+                     try:
+                         tree = ET.parse(f)
+                         xml_root = tree.getroot()
+                         for obj in xml_root.iter("Object"):
++                            cls = (obj.get("ClassificationItemId") or "").strip()
++                            if cls:
++                                classes.add(cls)
+                             for attr in obj.findall("Attribute"):
+                                 name = attr.get("Name", "").strip()
+-                                if name and name not in metadata:
+-                                    metadata[name] = {
++                                if not name:
++                                    continue
++                                norm_name = normalize_text(name)
++                                if norm_name not in metadata:
++                                    attr_order.append(name)
++                                    metadata[norm_name] = {
++                                        "Name": name,
+                                         "DefinitionId": attr.get("DefinitionId", ""),
+                                         "DefinitionWsGuid": attr.get("DefinitionWsGuid", ""),
+                                     }
+                     except ET.ParseError as exc:
+-                        logger.warning("Could not parse template XML: %s", exc)
++                        logger.warning("Could not parse template XML %s: %s", template_path.name, exc)
+ 
+-    logger.info("  Template: %d BIN files, %d attribute definitions", len(bins), len(metadata))
+-    return bins, metadata
++    logger.info(
++        "  Template %s: %d BIN files, %d attribute definitions, %d classes",
++        template_path.name, len(bins), len(metadata), len(classes),
++    )
++    return AcbosTemplate(template_path, bins, metadata, attr_order, classes)
+ 
+ 
+-def find_template(workspace: Path, cfg: dict, logger: logging.Logger) -> Path | None:
+-    """Find an ACBOS template file."""
++def find_templates(workspace: Path, cfg: dict, logger: logging.Logger) -> list[Path]:
++    """Find ACBOS template files, sorted deterministically."""
+     tpl_dir = workspace / cfg.get("paths", {}).get("acbos_template_dir", "Input/ACBOS_Templates")
+     if tpl_dir.exists():
+-        candidates = list(tpl_dir.glob("*.ACBOS")) + list(tpl_dir.glob("*.acbos"))
++        candidates = sorted(list(tpl_dir.glob("*.ACBOS")) + list(tpl_dir.glob("*.acbos")))
+         if candidates:
+-            logger.info("Using ACBOS template: %s", candidates[0].name)
+-            return candidates[0]
++            logger.info("Found %d ACBOS template(s) in %s", len(candidates), tpl_dir)
++            return candidates
+     logger.warning("No ACBOS template found in %s", tpl_dir)
+-    return None
++    return []
++
++
++def _row_classes(rows: pd.DataFrame) -> set[str]:
++    """Return non-empty classification values present in rows."""
++    classes: set[str] = set()
++    for candidate in ("ClassificationItemId", "ClsfItemId", "HS2_Class"):
++        norm = normalize_text(candidate)
++        col = next((c for c in rows.columns if normalize_text(c) == norm), None)
++        if col:
++            classes.update(str(v).strip() for v in rows[col].dropna().unique() if str(v).strip())
++    return classes
++
++
++def choose_template_for_rows(
++    rows: pd.DataFrame,
++    templates: list[AcbosTemplate],
++    deliverable_file: str,
++    logger: logging.Logger,
++) -> AcbosTemplate | None:
++    """Choose the closest sample ACBOS template for the target rows."""
++    if not templates:
++        return None
++    if len(templates) == 1:
++        return templates[0]
+ 
++    deliverable_upper = Path(deliverable_file or "").name.upper()
++    row_classes = _row_classes(rows)
++
++    def score(tpl: AcbosTemplate) -> tuple[int, int, int]:
++        # Prefer templates whose discipline/document token appears in the deliverable name.
++        # Example: template "...-BR-..." should beat "...-CV-..." for a BR deliverable.
++        name_tokens = re.split(r"[-_ .]+", tpl.path.stem.upper())
++        token_score = sum(1 for token in name_tokens if token and token in deliverable_upper)
++        class_score = len(row_classes & tpl.classes)
++        attr_score = len(tpl.attr_order)
++        return (token_score, class_score, attr_score)
++
++    chosen = max(templates, key=score)
++    logger.info(
++        "  Using ACBOS template %s for classes=%s",
++        chosen.path.name, ",".join(sorted(row_classes)) or "<none>",
++    )
++    return chosen
+ 
+ # ---------------------------------------------------------------------------
+ # XML builder
+@@ -125,50 +199,57 @@
+     return s == "" or s.lower() in ("nan", "none", "nat")
+ 
+ 
+-def build_data_xml(rows: pd.DataFrame, attr_metadata: dict) -> str:
++def _value_from_row_by_normalized_name(row: pd.Series, norm_name: str) -> Any:
++    for col, val in row.items():
++        if normalize_text(col) == norm_name:
++            return val
++    return None
++
++
++def build_data_xml(rows: pd.DataFrame, template: AcbosTemplate | None) -> str:
+     """
+-    Serialise DataFrame to Data.XML (ACBOSProjectData format).
+-    Each row becomes an <Object> element with <Attribute> children.
++    Serialise rows to Data.XML (ACBOSProjectData format).
++
++    The sample ACBOS Data.XML acts as the schema: generated Object attributes are
++    written in the same order and use the same DefinitionId/DefinitionWsGuid.
++    Source-only/helper columns are therefore not emitted as extra ACBOS
++    attributes.
+     """
+     root = ET.Element("ACBOSProjectData")
+     ET.SubElement(root, "ObjectState").text = "Unchanged"
+     ET.SubElement(root, "WsGuid").text = "00000000-0000-0000-0000-000000000000"
+ 
++    attr_order = template.attr_order if template else []
++    attr_metadata = template.attr_metadata if template else {}
++
+     for _, row in rows.iterrows():
+         obj_elem = ET.SubElement(root, "Object")
+ 
+         # Id
+         obj_id = ""
+         for id_col in ("ObjectId", "objectid", "Id"):
+-            for col in rows.columns:
+-                if normalize_text(col) == normalize_text(id_col) and not _is_empty(row[col]):
+-                    obj_id = str(row[col]).strip()
+-                    break
+-            if obj_id:
++            norm = normalize_text(id_col)
++            val = _value_from_row_by_normalized_name(row, norm)
++            if not _is_empty(val):
++                obj_id = str(val).strip()
+                 break
+         obj_elem.set("Id", obj_id)
+ 
+         # ClassificationItemId — check ClassificationItemId, then ClsfItemId, then HS2_Class
+         cls_id = ""
+         for candidate in ("ClassificationItemId", "ClsfItemId", "HS2_Class"):
+-            norm = normalize_text(candidate)
+-            for col in rows.columns:
+-                if normalize_text(col) == norm and not _is_empty(row[col]):
+-                    cls_id = str(row[col]).strip()
+-                    break
+-            if cls_id:
++            val = _value_from_row_by_normalized_name(row, normalize_text(candidate))
++            if not _is_empty(val):
++                cls_id = str(val).strip()
+                 break
+         obj_elem.set("ClassificationItemId", cls_id)
+ 
+         # Alignment — check Alignment, then AlgnmPln
+         alignment = ""
+         for candidate in ("Alignment", "AlgnmPln"):
+-            norm = normalize_text(candidate)
+-            for col in rows.columns:
+-                if normalize_text(col) == norm and not _is_empty(row[col]):
+-                    alignment = str(row[col]).strip()
+-                    break
+-            if alignment:
++            val = _value_from_row_by_normalized_name(row, normalize_text(candidate))
++            if not _is_empty(val):
++                alignment = str(val).strip()
+                 break
+         obj_elem.set("Alignment", alignment)
+         obj_elem.set("Deleted", "false")
+@@ -176,27 +257,32 @@
+         ET.SubElement(obj_elem, "ObjectState").text = "Unchanged"
+         ET.SubElement(obj_elem, "WsGuid").text = new_guid()
+ 
+-        # Data columns as <Attribute> children
+-        for col in rows.columns:
+-            if normalize_text(col) in _STRUCTURAL_NORMS:
++        if attr_order:
++            attribute_names = attr_order
++        else:
++            # Safe fallback if no template XML is available.
++            attribute_names = [c for c in rows.columns if normalize_text(c) not in _STRUCTURAL_NORMS]
++
++        for attr_name in attribute_names:
++            norm_name = normalize_text(attr_name)
++            if norm_name in _STRUCTURAL_NORMS:
+                 continue
+-            val = row[col]
++            val = _value_from_row_by_normalized_name(row, norm_name)
+             if _is_empty(val):
+                 continue
+             str_val = str(val).strip()
+             if not str_val:
+                 continue
+ 
+-            meta = attr_metadata.get(col, {})
++            meta = attr_metadata.get(norm_name, {"Name": attr_name})
+             attr_elem = ET.SubElement(obj_elem, "Attribute")
+             attr_elem.set("DefinitionId", meta.get("DefinitionId", ""))
+-            attr_elem.set("Name", col)
++            attr_elem.set("Name", meta.get("Name", attr_name))
+             attr_elem.set("Value", str_val)
+             attr_elem.set("DefinitionWsGuid", meta.get("DefinitionWsGuid", ""))
+             ET.SubElement(attr_elem, "ObjectState").text = "Unchanged"
+             ET.SubElement(attr_elem, "WsGuid").text = new_guid()
+ 
+-    # Pretty-print
+     raw = ET.tostring(root, encoding="unicode")
+     dom = minidom.parseString(raw)
+     pretty = dom.toprettyxml(indent="  ", encoding="utf-8").decode("utf-8")
+@@ -253,8 +339,7 @@
+     l2_df: pd.DataFrame,
+     pw_df: pd.DataFrame,
+     output_dir: Path,
+-    template_bins: dict[str, Path],
+-    attr_metadata: dict,
++    templates: list[AcbosTemplate],
+     logger: logging.Logger,
+     deliverable_file: str = "",
+ ) -> Path | None:
+@@ -275,9 +360,6 @@
+ 
+     logger.info("  %s: %d scope3 rows", uaid2, len(rows))
+ 
+-    # Build Data.XML
+-    xml_str = build_data_xml(rows, attr_metadata)
+-
+     # Resolve filename
+     # Use deliverable file from PW extract if available, otherwise resolve from mapping
+     if deliverable_file:
+@@ -290,14 +372,18 @@
+     if not filename.upper().endswith(".ACBOS"):
+         filename += ".ACBOS"
+ 
++    template = choose_template_for_rows(rows, templates, filename, logger)
++    xml_str = build_data_xml(rows, template)
++
+     uaid_dir = output_dir / sanitize_filename(uaid2)
+     uaid_dir.mkdir(parents=True, exist_ok=True)
+     output_path = get_available_path(uaid_dir / filename)
+ 
+     # Build ZIP package
+     with zipfile.ZipFile(str(output_path), "w", compression=zipfile.ZIP_DEFLATED) as zf:
+-        for bin_name, bin_path in template_bins.items():
+-            zf.write(str(bin_path), arcname=bin_name)
++        if template:
++            for archive_name, bin_path in template.bins:
++                zf.write(str(bin_path), arcname=archive_name)
+         zf.writestr("Data.XML", xml_str)
+ 
+     logger.info("  ACBOS written: %s", output_path.name)
+@@ -324,10 +410,9 @@
+     if scope3.empty:
+         raise RuntimeError("AssetsScope3 data not found. Run data cache step first.")
+ 
+-    # Find and extract template
+-    tpl_path = find_template(workspace, cfg, logger)
+-    template_bins: dict[str, Path] = {}
+-    attr_metadata: dict = {}
++    # Find and extract templates
++    tpl_paths = find_templates(workspace, cfg, logger)
++    templates: list[AcbosTemplate] = []
+ 
+     acbos_dir = output_dir / "ACBOS"
+     acbos_dir.mkdir(parents=True, exist_ok=True)
+@@ -335,15 +420,15 @@
+     generated, errors = [], []
+ 
+     with tempfile.TemporaryDirectory() as tmpdir:
+-        if tpl_path:
+-            template_bins, attr_metadata = extract_template_data(tpl_path, Path(tmpdir), logger)
++        for tpl_path in tpl_paths:
++            templates.append(extract_template_data(tpl_path, Path(tmpdir), logger))
+ 
+         for target in targets:
+             uaid2 = target["uaid"]
+             deliverable_file = target.get("file", "")
+             try:
+                 out = generate_single_acbos(
+-                    uaid2, scope3, l2_df, pw_df, acbos_dir, template_bins, attr_metadata, logger,
++                    uaid2, scope3, l2_df, pw_df, acbos_dir, templates, logger,
+                     deliverable_file,
+                 )
+                 if out:
+diff -ruN '--exclude=__pycache__' '--exclude=Logs' '--exclude=Output' mpdt_repo/MPDT_FileGeneration-main/mpdt_generator/generator.py opt_repo/mpdt_generator/generator.py
+--- mpdt_repo/MPDT_FileGeneration-main/mpdt_generator/generator.py	2026-06-04 06:35:48.000000000 +0000
++++ opt_repo/mpdt_generator/generator.py	2026-06-04 08:14:24.357503218 +0000
+@@ -17,6 +17,7 @@
+ import argparse
+ import difflib
+ import logging
++import copy
+ import re
+ import shutil
+ import subprocess
+@@ -1067,6 +1068,69 @@
+     return row_sets, union_set
+ 
+ 
++
++
++def _copy_row_format(ws, source_row: int, target_row: int, max_col: int) -> None:
++    """Copy template row formatting to a generated data row without copying values."""
++    if target_row == source_row:
++        return
++    ws.row_dimensions[target_row].height = ws.row_dimensions[source_row].height
++    for col_idx in range(1, max_col + 1):
++        src = ws.cell(row=source_row, column=col_idx)
++        dst = ws.cell(row=target_row, column=col_idx)
++        if src.has_style:
++            dst._style = copy.copy(src._style)
++        if src.number_format:
++            dst.number_format = src.number_format
++        if src.alignment:
++            dst.alignment = copy.copy(src.alignment)
++        if src.protection:
++            dst.protection = copy.copy(src.protection)
++        if src.hyperlink:
++            dst._hyperlink = copy.copy(src.hyperlink)
++        if src.comment:
++            dst.comment = copy.copy(src.comment)
++
++
++def _snapshot_row_fills(ws, template_row: int, max_col: int) -> dict[int, Any]:
++    """Capture template fills before any checkerboard black fills are applied."""
++    return {
++        col_idx: copy.copy(ws.cell(row=template_row, column=col_idx).fill)
++        for col_idx in range(1, max_col + 1)
++    }
++
++
++def _blank_fill_from_snapshot(ws, template_fills: dict[int, Any], target_row: int, col_idx: int) -> None:
++    """Reset a data cell fill to the original template-row fill.
++
++    Do not read from the live template row during checkerboard processing: row 3
++    is also a generated data row and may already have been black-filled.
++    """
++    fill = template_fills.get(col_idx)
++    if fill is not None:
++        ws.cell(row=target_row, column=col_idx).fill = copy.copy(fill)
++
++
++def _delete_columns_and_return_kept(
++    ws,
++    columns: list[str],
++    delete_idxs: list[int],
++) -> tuple[list[str], dict[str, int]]:
++    """Delete columns from the worksheet and return remaining headers/1-based indexes.
++
++    The returned list preserves duplicate pandas header names in order.  The map is
++    keyed by header value, so duplicate blank/Unnamed headers will point to the last
++    remaining occurrence; this is fine for the LoDM attribute headers, which are the
++    only columns used by the applicability code.
++    """
++    delete_set = set(delete_idxs)
++    kept_columns = [col for idx, col in enumerate(columns, start=1) if idx not in delete_set]
++    for idx in sorted(delete_set, reverse=True):
++        ws.delete_cols(idx, 1)
++    kept_index_by_col = {col: idx for idx, col in enumerate(kept_columns, start=1)}
++    return kept_columns, kept_index_by_col
++
++
+ # ---------------------------------------------------------------------------
+ # Pass 3: applicability (black fill for inapplicable cells)
+ # ---------------------------------------------------------------------------
+@@ -1095,33 +1159,35 @@
+     row_allowed_cols: list[set[str]],
+     start_row: int = 3,
+     union_allowed_cols: "set[str] | None" = None,
++    template_fills: dict[int, Any] | None = None,
+ ) -> None:
+     """Mark inapplicable AW+ cells with black fill based on class applicability.
+ 
+-    AU(47)=complete and AV(48)=count are intentionally excluded from blackening.
+-
+-    The count column is used as a validation check only.  The black-fill rule
+-    still follows the class-specific LoDM applicability for each row.  Columns
+-    that never appear in any ClassCode's LoDM attribute list are left white as
+-    governance columns.
++    This must be called after any physical column deletion so the black cells are
++    applied to the final worksheet coordinates.  Calling it before deleting AW+
++    columns causes black fills to shift left into AU/AV and governance columns,
++    which breaks the expected MPDT checkerboard pattern.
+     """
+-    # AW (col 49) is the first attribute column; AU/AV are complete/count.
+-    au_start_idx = column_index_from_string("AW") if column_index_from_string else 49
+-    if au_start_idx > len(columns):
++    aw_start_idx = column_index_from_string("AW") if column_index_from_string else 49
++    if aw_start_idx > len(columns):
+         return
+ 
+-    for row_offset, row_data in enumerate(data_rows):
++    for row_offset, _row_data in enumerate(data_rows):
+         excel_row = start_row + row_offset
+         allowed = row_allowed_cols[row_offset] if row_offset < len(row_allowed_cols) else set()
+         for col_idx, col in enumerate(columns, start=1):
+-            if col_idx < au_start_idx:
++            if col_idx < aw_start_idx:
++                # Defensive reset: AU/AV and earlier columns must never inherit
++                # black fills from template rows or from shifted deleted columns.
++                if template_fills is not None:
++                    _blank_fill_from_snapshot(ws, template_fills, excel_row, col_idx)
+                 continue
+-            # Blacken only when the column is a class-specific LoDM attribute
+-            # but not applicable to this row.
+             is_class_attr = union_allowed_cols is None or col in union_allowed_cols
+             if is_class_attr and col not in allowed:
+-                cell = ws.cell(row=excel_row, column=col_idx)
+-                cell.fill = _BLACK_FILL
++                ws.cell(row=excel_row, column=col_idx).fill = _BLACK_FILL
++            else:
++                if template_fills is not None:
++                    _blank_fill_from_snapshot(ws, template_fills, excel_row, col_idx)
+ 
+ 
+ # ---------------------------------------------------------------------------
+@@ -1146,6 +1212,7 @@
+     deliverable_file: str = "",
+     l2_df: "pd.DataFrame | None" = None,
+     row1_codes: "dict[str, str] | None" = None,
++    indexes: "dict[str, Any] | None" = None,
+ ) -> Path | None:
+     """Generate a single MPDT file for a UAID_2."""
+     if load_workbook is None:
+@@ -1156,13 +1223,58 @@
+         raise FileNotFoundError(f"MPDT template not found: {template_path}")
+ 
+     logger.info("  Building joins for %s ...", uaid2)
+-    join1_row, join2_row = build_joins(scope2, scope3, sf_l2, sf_l3, uaid2, logger)
++    indexes = indexes or {}
++    uaid2_key = str(uaid2).strip().upper()
++    s3_rows_indexed = indexes.get("scope3_by_uaid2", {}).get(uaid2_key, pd.DataFrame())
++    s2_row_indexed = indexes.get("scope2_by_uaid2", {}).get(uaid2_key)
++    sf2_row_indexed = indexes.get("sf_l2_by_uaid2", {}).get(uaid2_key)
++
++    if s2_row_indexed is not None or sf2_row_indexed is not None or not s3_rows_indexed.empty:
++        if s2_row_indexed is not None and sf2_row_indexed is not None:
++            join1_row = pd.Series(
++                list(s2_row_indexed.values) + list(sf2_row_indexed.values),
++                index=[f"{c}_l3" for c in s2_row_indexed.index] + [f"{c}_sform2" for c in sf2_row_indexed.index],
++                dtype=object,
++            )
++        elif s2_row_indexed is not None:
++            join1_row = s2_row_indexed
++        elif sf2_row_indexed is not None:
++            join1_row = sf2_row_indexed
++        else:
++            join1_row = pd.Series(dtype=object)
++
++        join2_row = pd.Series(dtype=object)
++        if not s3_rows_indexed.empty:
++            uaid3_col_s3_i = indexes.get("uaid3_col_s3")
++            sf3_by_uaid3 = indexes.get("sf_l3_by_uaid3", {})
++            first_s3 = s3_rows_indexed.iloc[0]
++            if uaid3_col_s3_i:
++                uaid3_val = str(first_s3.get(uaid3_col_s3_i, "")).strip().upper()
++                sf3_row = sf3_by_uaid3.get(uaid3_val)
++                if sf3_row is not None:
++                    join2_row = pd.Series(
++                        list(sf3_row.values) + list(first_s3.values),
++                        index=[f"{c}_sform3" for c in sf3_row.index] + [f"{c}_l3" for c in first_s3.index],
++                        dtype=object,
++                    )
++                else:
++                    join2_row = pd.Series(first_s3.values, index=[f"{c}_l3" for c in first_s3.index], dtype=object)
++            else:
++                join2_row = pd.Series(first_s3.values, index=[f"{c}_l3" for c in first_s3.index], dtype=object)
++    else:
++        join1_row, join2_row = build_joins(scope2, scope3, sf_l2, sf_l3, uaid2, logger)
+ 
+     # Resolve ACBOS-based name from L2 mapping — mirrors notebook naming logic:
+     #   acbos_value = str(acbos_match.iloc[0]['ACBOS']).replace('-ACBOS', '')
+     #   filename = f"MPDT_{acbos_value}.xlsm"
+     _acbos_stem = ""
+-    if l2_df is not None and not l2_df.empty:
++    _l2_row = indexes.get("l2_by_uaid2", {}).get(uaid2_key)
++    _acol = indexes.get("l2_acbos_col")
++    if _l2_row is not None and _acol:
++        _val = str(_l2_row.get(_acol, "")).strip()
++        if _val and _val.lower() != "nan":
++            _acbos_stem = _val.replace("-ACBOS", "")
++    elif l2_df is not None and not l2_df.empty:
+         _u2col = next((c for c in l2_df.columns if normalize_text(c) in ("uaid 2", "uaid2", "uaid")), None)
+         _acol = next((c for c in l2_df.columns if normalize_text(c) in ("acbos doc", "acbos")), None)
+         if _u2col and _acol:
+@@ -1181,75 +1293,71 @@
+         deliverable_name = f"MPDT_{uaid2}"
+ 
+     # -----------------------------------------------------------------------
+-    # Diagnostic CSV dumps — written to output_dir/debug_{uaid2}/
++    # Optional diagnostic CSV dumps. Disabled by default because writing many
++    # small CSV files for every target adds noticeable overhead. Enable with
++    # config: {"debug_mpdt_generation": true}.
+     # -----------------------------------------------------------------------
+-    debug_dir = output_dir / f"debug_{uaid2}"
+-    debug_dir.mkdir(parents=True, exist_ok=True)
++    if bool(cfg.get("debug_mpdt_generation", False)):
++        debug_dir = output_dir / f"debug_{uaid2}"
++        debug_dir.mkdir(parents=True, exist_ok=True)
+ 
+-    pd.DataFrame([join1_row]).to_csv(debug_dir / "join1_row.csv", index=False)
+-    pd.DataFrame([join2_row]).to_csv(debug_dir / "join2_row.csv", index=False)
++        pd.DataFrame([join1_row]).to_csv(debug_dir / "join1_row.csv", index=False)
++        pd.DataFrame([join2_row]).to_csv(debug_dir / "join2_row.csv", index=False)
+ 
+-    # Also dump the subset of scope3 rows that belong to this UAID2
+-    if not scope3.empty:
+-        _uaid2_norms2 = {normalize_text(x) for x in ("UAID_2", "uaid_2", "uaid2", "ParentUaid", "Parent_UAID")}
+-        u2col_s3 = next((c for c in scope3.columns if normalize_text(c) in _uaid2_norms2), None)
+-        if u2col_s3:
+-            s3_sub = scope3[scope3[u2col_s3].fillna("").astype(str).str.strip().str.upper() == uaid2.upper()]
+-            s3_sub.to_csv(debug_dir / "scope3_rows.csv", index=False)
++        if not s3_rows_indexed.empty:
++            s3_rows_indexed.to_csv(debug_dir / "scope3_rows.csv", index=False)
+             logger.info("  Debug: join1=%d cols, join2=%d cols, scope3_rows=%d -> %s",
+-                        len(join1_row.index), len(join2_row.index), len(s3_sub), debug_dir)
++                        len(join1_row.index), len(join2_row.index), len(s3_rows_indexed), debug_dir)
+ 
+-    # Dump mapping evaluation: one row per MPDT column with expression and resolved value
+-    eval_rows = []
+-    for col in columns:
+-        expr = _mapping_expr_for_column(mapping_dict, col)
+-        val = get_mapped_value(expr, join2_row, join1_row, deliverable_name) if expr else None
+-        eval_rows.append({"mpdt_column": col, "mapping_expr": expr, "resolved_value": val})
+-    pd.DataFrame(eval_rows).to_csv(debug_dir / "mapping_eval.csv", index=False)
+-    logger.info("  Debug CSVs written to %s", debug_dir)
+-    # -----------------------------------------------------------------------
++        eval_rows = []
++        for col in columns:
++            expr = _mapping_expr_for_column(mapping_dict, col)
++            val = get_mapped_value(expr, join2_row, join1_row, deliverable_name) if expr else None
++            eval_rows.append({"mpdt_column": col, "mapping_expr": expr, "resolved_value": val})
++        pd.DataFrame(eval_rows).to_csv(debug_dir / "mapping_eval.csv", index=False)
++        logger.info("  Debug CSVs written to %s", debug_dir)
+ 
+     # Build data rows (one per L3 asset under this L2)
+     # Each scope3 row produces its own MPDT row with its own column values.
+     data_rows: list[dict[str, Any]] = []
+-    if not scope3.empty:
++    rows_for_uaid = s3_rows_indexed
++    if rows_for_uaid.empty and not scope3.empty:
+         _uaid2_norms = {normalize_text(x) for x in ("UAID_2", "uaid_2", "uaid2", "ParentUaid", "Parent_UAID")}
+-        uaid2_col_s3 = next(
+-            (c for c in scope3.columns if normalize_text(c) in _uaid2_norms), None
+-        )
++        uaid2_col_s3 = next((c for c in scope3.columns if normalize_text(c) in _uaid2_norms), None)
+         if uaid2_col_s3:
+             rows_for_uaid = scope3[scope3[uaid2_col_s3].fillna("").astype(str).str.strip().str.upper() == uaid2.upper()]
+-            if rows_for_uaid.empty:
+-                logger.warning("  No scope3 rows found for %s — skipping MPDT.", uaid2)
+-                return None
+ 
+-            # Build a per-row join2 Series for each scope3 row
+-            # (merge with SmartForms L3 if available for richer data)
+-            uaid3_col_s3 = _uaid_col(scope3, ["UAID_3", "Uaid_3", "Uaid", "UAID"])
+-            uaid3_col_sf = _uaid_col(sf_l3, ["UAID_3", "Uaid_3", "Uaid", "UAID", "Asset_ID"]) if not sf_l3.empty else None
+-
+-            for _, s3_row in rows_for_uaid.iterrows():
+-                # Build a per-row join2_row by merging this scope3 row with SmartForms L3
+-                row_join2 = pd.Series(s3_row.values, index=s3_row.index, dtype=object)
+-                if uaid3_col_s3 and uaid3_col_sf and not sf_l3.empty:
+-                    uaid3_val = str(s3_row.get(uaid3_col_s3, "")).strip().upper()
+-                    if uaid3_val:
+-                        sf_match = sf_l3[
+-                            sf_l3[uaid3_col_sf].fillna("").astype(str).str.strip().str.upper() == uaid3_val
+-                        ]
+-                        if not sf_match.empty:
+-                            # Merge: scope3 row + smartforms L3 row
+-                            combined_idx = [f"{c}_l3" for c in s3_row.index] + [f"{c}_sform3" for c in sf_match.iloc[0].index]
+-                            combined_vals = list(s3_row.values) + list(sf_match.iloc[0].values)
+-                            row_join2 = pd.Series(combined_vals, index=combined_idx, dtype=object)
+-                        else:
+-                            row_join2 = pd.Series(s3_row.values, index=[f"{c}_l3" for c in s3_row.index], dtype=object)
+-                    else:
+-                        row_join2 = pd.Series(s3_row.values, index=[f"{c}_l3" for c in s3_row.index], dtype=object)
+-                else:
+-                    row_join2 = pd.Series(s3_row.values, index=[f"{c}_l3" for c in s3_row.index], dtype=object)
++    if rows_for_uaid.empty:
++        logger.warning("  No scope3 rows found for %s — skipping MPDT.", uaid2)
++        return None
++
++    uaid3_col_s3 = indexes.get("uaid3_col_s3") or _uaid_col(scope3, ["UAID_3", "Uaid_3", "Uaid", "UAID"])
++    sf3_by_uaid3 = indexes.get("sf_l3_by_uaid3", {})
++    uaid3_col_sf = indexes.get("uaid3_col_sf") or (_uaid_col(sf_l3, ["UAID_3", "Uaid_3", "Uaid", "UAID", "Asset_ID"]) if not sf_l3.empty else None)
++
++    for _, s3_row in rows_for_uaid.iterrows():
++        if uaid3_col_s3:
++            uaid3_val = str(s3_row.get(uaid3_col_s3, "")).strip().upper()
++        else:
++            uaid3_val = ""
++        sf3_row = sf3_by_uaid3.get(uaid3_val)
++        if sf3_row is not None:
++            combined_idx = [f"{c}_l3" for c in s3_row.index] + [f"{c}_sform3" for c in sf3_row.index]
++            combined_vals = list(s3_row.values) + list(sf3_row.values)
++            row_join2 = pd.Series(combined_vals, index=combined_idx, dtype=object)
++        elif uaid3_val and uaid3_col_sf and not sf_l3.empty:
++            sf_match = sf_l3[sf_l3[uaid3_col_sf].fillna("").astype(str).str.strip().str.upper() == uaid3_val]
++            if not sf_match.empty:
++                sf_row = sf_match.iloc[0]
++                combined_idx = [f"{c}_l3" for c in s3_row.index] + [f"{c}_sform3" for c in sf_row.index]
++                combined_vals = list(s3_row.values) + list(sf_row.values)
++                row_join2 = pd.Series(combined_vals, index=combined_idx, dtype=object)
++            else:
++                row_join2 = pd.Series(s3_row.values, index=[f"{c}_l3" for c in s3_row.index], dtype=object)
++        else:
++            row_join2 = pd.Series(s3_row.values, index=[f"{c}_l3" for c in s3_row.index], dtype=object)
+ 
+-                data_rows.append(populate_row(columns, mapping_dict, row_join2, join1_row, uaid2, deliverable_name))
++        data_rows.append(populate_row(columns, mapping_dict, row_join2, join1_row, uaid2, deliverable_name))
+ 
+     if not data_rows:
+         logger.warning("  No scope3 data rows could be built for %s — skipping MPDT.", uaid2)
+@@ -1262,9 +1370,6 @@
+     sw_model_part_id_value = _extract_sw_model_part_id_from_existing_mpdt(
+         workspace, cfg, uaid2, pw_df, columns, logger
+     )
+-    print("The size of mpdt_df is", mpdt_df.shape)
+-
+-
+     mpdt_df = _apply_round2(mpdt_df, columns, uaid2, deliverable_name, sw_model_part_id_value, lodm_df, control_df, pw_df)
+     data_rows = [{str(k): v for k, v in rec.items()} for rec in mpdt_df.to_dict("records")]
+ 
+@@ -1294,10 +1399,13 @@
+         for c in range(1, ws.max_column + 1):
+             ws.cell(row=r, column=c).value = None
+ 
+-    # Write data
++    # Write data.  Preserve the template's data-row styles for every generated row;
++    # openpyxl creates rows beyond the template with default formatting otherwise.
+     for row_offset, row_data in enumerate(data_rows):
++        excel_row = clear_start + row_offset
++        _copy_row_format(ws, clear_start, excel_row, ws.max_column)
+         for col_idx, col in enumerate(columns, start=1):
+-            ws.cell(row=clear_start + row_offset, column=col_idx).value = row_data.get(col)
++            ws.cell(row=excel_row, column=col_idx).value = row_data.get(col)
+ 
+     # AW(49)+ = attribute columns subject to blackening and removal.
+     # AU(47)=complete, AV(48)=count are excluded.
+@@ -1306,11 +1414,6 @@
+         mpdt_df, columns, lodm_df, aw_start_idx, logger, row1_codes=row1_codes
+     )
+ 
+-    # Apply black fill from AW onwards only (AU=complete, AV=count are left as-is).
+-    # Pass union_allowed_cols so governance columns (never in any LoDM) stay white.
+-    apply_applicability(ws, data_rows, columns, row_allowed_cols, start_row=clear_start,
+-                        union_allowed_cols=union_allowed_cols)
+-
+     # Remove AW+ columns that are LoDM attribute columns for OTHER classcodes
+     # (i.e. their Row 1 short code IS a real LoDM AttTypeName globally) but are
+     # not relevant to any classcode that actually appears in this MPDT.
+@@ -1318,8 +1421,8 @@
+     # Governance / DB-field columns (UAID_2, AssetName_2, startChainage, etc.)
+     # have Row 1 codes that do NOT appear in the LoDM at all — they must NEVER
+     # be deleted, regardless of whether they appear in union_allowed_cols.
+-    _all_lodm_att_norms: set[str] = set()
+-    if row1_codes and not lodm_df.empty:
++    _all_lodm_att_norms: set[str] = indexes.get("all_lodm_att_norms", set())
++    if not _all_lodm_att_norms and row1_codes and not lodm_df.empty:
+         _att_col2 = next(
+             (c for c in lodm_df.columns if normalize_text(c) == "atttypename"), None
+         )
+@@ -1346,8 +1449,27 @@
+         ],
+         reverse=True,
+     )
+-    for idx in delete_idxs:
+-        ws.delete_cols(idx, 1)
++    # Delete first, then apply the black checkerboard fill to the final column
++    # coordinates.  Applying fills before deletion shifts black formatting into
++    # AU/AV and retained governance columns.
++    kept_columns, _kept_index_by_col = _delete_columns_and_return_kept(ws, columns, delete_idxs)
++
++    # Snapshot row-3 fills before applying black fills.  Row 3 is also a data row,
++    # so using it as a live style source during checkerboard processing would make
++    # later rows inherit row 3's black cells.
++    template_fills = _snapshot_row_fills(ws, clear_start, ws.max_column)
++
++    # Apply black fill from AW onwards only (AU=complete, AV=count are left as-is).
++    # Pass union_allowed_cols so governance columns (never in any LoDM) stay white.
++    apply_applicability(
++        ws,
++        data_rows,
++        kept_columns,
++        row_allowed_cols,
++        start_row=clear_start,
++        union_allowed_cols=union_allowed_cols,
++        template_fills=template_fills,
++    )
+ 
+     wb.save(str(output_file))
+     logger.info("  MPDT written: %s (%d data rows)", output_file.name, len(data_rows))
+@@ -1385,6 +1507,39 @@
+     if not columns:
+         raise RuntimeError("Could not determine MPDT columns from sample file.")
+ 
++    # Pre-index large input tables once per batch. The previous implementation
++    # repeatedly scanned Scope3 and SmartForms L3 for every target and every L3
++    # row; with large SmartForms files this dominates runtime.
++    uaid2_col_s2 = _uaid_col(scope2, ["UAID_2", "Uaid_2", "Uaid", "UAID"])
++    uaid2_col_sf2 = _uaid_col(sf_l2, ["UAID_2", "Uaid_2", "Uaid", "UAID", "Asset_ID"])
++    uaid2_col_s3 = _uaid_col(scope3, ["UAID_2", "Uaid_2", "ParentUaid", "Parent_UAID"])
++    uaid3_col_s3 = _uaid_col(scope3, ["UAID_3", "Uaid_3", "Uaid", "UAID"])
++    uaid3_col_sf = _uaid_col(sf_l3, ["UAID_3", "Uaid_3", "Uaid", "UAID", "Asset_ID"]) if not sf_l3.empty else None
++    l2_uaid_col = next((c for c in l2_df.columns if normalize_text(c) in ("uaid 2", "uaid2", "uaid")), None) if l2_df is not None and not l2_df.empty else None
++    l2_acbos_col = next((c for c in l2_df.columns if normalize_text(c) in ("acbos doc", "acbos")), None) if l2_df is not None and not l2_df.empty else None
++
++    all_lodm_att_norms: set[str] = set()
++    if row1_codes and not lodm_df.empty:
++        att_col = next((c for c in lodm_df.columns if normalize_text(c) == "atttypename"), None)
++        if att_col:
++            all_lodm_att_norms = {_norm_att_code(v) for v in lodm_df[att_col].dropna() if str(v).strip()}
++
++    indexes = {
++        "scope2_by_uaid2": _first_row_by_upper_key(scope2, uaid2_col_s2),
++        "sf_l2_by_uaid2": _first_row_by_upper_key(sf_l2, uaid2_col_sf2),
++        "scope3_by_uaid2": _group_df_by_upper_key(scope3, uaid2_col_s3),
++        "sf_l3_by_uaid3": _first_row_by_upper_key(sf_l3, uaid3_col_sf),
++        "l2_by_uaid2": _first_row_by_upper_key(l2_df, l2_uaid_col) if l2_df is not None else {},
++        "l2_acbos_col": l2_acbos_col,
++        "uaid3_col_s3": uaid3_col_s3,
++        "uaid3_col_sf": uaid3_col_sf,
++        "all_lodm_att_norms": all_lodm_att_norms,
++    }
++    logger.info(
++        "Indexed sources: scope3 parents=%d, SmartForms L3 assets=%d, L2 rows=%d",
++        len(indexes["scope3_by_uaid2"]), len(indexes["sf_l3_by_uaid3"]), len(indexes["l2_by_uaid2"]),
++    )
++
+     mpdt_dir = output_dir / "MPDT"
+     mpdt_dir.mkdir(parents=True, exist_ok=True)
+ 
+@@ -1398,6 +1553,7 @@
+                 scope2, scope3, sf_l2, sf_l3, lodm_df, pw_df, control_df, logger, deliverable_file,
+                 l2_df=l2_df,
+                 row1_codes=row1_codes,
++                indexes=indexes,
+             )
+             if out:
+                 generated.append({"uaid": uaid2, "file": str(out)})
+diff -ruN '--exclude=__pycache__' '--exclude=Logs' '--exclude=Output' mpdt_repo/MPDT_FileGeneration-main/utils/common.py opt_repo/utils/common.py
+--- mpdt_repo/MPDT_FileGeneration-main/utils/common.py	2026-06-04 06:35:48.000000000 +0000
++++ opt_repo/utils/common.py	2026-06-04 08:15:09.541836450 +0000
+@@ -4,6 +4,7 @@
+ from __future__ import annotations
+ 
+ import json
++import pickle
+ import logging
+ import os
+ import re
+@@ -170,10 +171,21 @@
+ # ---------------------------------------------------------------------------
+ 
+ def read_table_any(path_no_ext: Path, logger: logging.Logger) -> pd.DataFrame:
+-    """Read parquet when available, otherwise fall back to xlsx."""
++    """Read a cached table using the fastest available format.
++
++    Preference order is pickle -> parquet -> xlsx. Pickle is used as a local
++    performance cache only; it avoids the very slow openpyxl path on repeated
++    runs and does not require pyarrow/fastparquet.
++    """
++    pickle_path = path_no_ext.with_suffix(".pkl")
+     parquet_path = path_no_ext.with_suffix(".parquet")
+     xlsx_path = path_no_ext.with_suffix(".xlsx")
+ 
++    if pickle_path.exists():
++        try:
++            return pd.read_pickle(pickle_path)
++        except Exception as exc:
++            logger.warning("Could not read pickle cache %s (%s). Trying parquet/Excel.", pickle_path.name, exc)
+     if parquet_path.exists():
+         try:
+             return pd.read_parquet(parquet_path)
+@@ -181,17 +193,41 @@
+             logger.warning("Could not read parquet %s (%s). Trying Excel.", parquet_path.name, exc)
+     if xlsx_path.exists():
+         try:
+-            return pd.read_excel(xlsx_path, dtype=str, engine="openpyxl")
++            df = pd.read_excel(xlsx_path, dtype=str, engine="openpyxl")
++            try:
++                pickle_path.parent.mkdir(parents=True, exist_ok=True)
++                df.to_pickle(pickle_path)
++            except Exception as pexc:
++                logger.debug("Could not create pickle cache for %s (%s).", xlsx_path.name, pexc)
++            return df
+         except Exception as exc:
+             logger.warning("Could not read Excel %s (%s).", xlsx_path.name, exc)
+     return pd.DataFrame()
+ 
+ 
+ def write_table_cache(df: pd.DataFrame, path_no_ext: Path, logger: logging.Logger) -> str:
+-    """Write Excel always; write parquet when supported. Returns format used."""
++    """Write local caches. Pickle is always written for fast repeat loads;
++    Excel remains the human-readable interchange copy; parquet is optional.
++    """
+     xlsx_path = path_no_ext.with_suffix(".xlsx")
++    pickle_path = path_no_ext.with_suffix(".pkl")
+     xlsx_path.parent.mkdir(parents=True, exist_ok=True)
+-    df.to_excel(xlsx_path, index=False)
++    try:
++        df.to_pickle(pickle_path)
++    except Exception as exc:
++        logger.debug("Could not write pickle cache for %s (%s).", path_no_ext.name, exc)
++
++    # Excel cache writes are very slow for large SmartForms/Scope tables and are
++    # not needed for normal pipeline execution once a pickle/parquet cache exists.
++    # Keep small caches human-readable, but skip huge Excel duplicates by default.
++    cell_count = int(getattr(df, "shape", (0, 0))[0]) * int(getattr(df, "shape", (0, 0))[1])
++    write_large_excel = os.environ.get("MPDT_WRITE_LARGE_EXCEL_CACHE", "0").strip() in ("1", "true", "yes")
++    wrote_xlsx = False
++    if cell_count <= 1_000_000 or write_large_excel:
++        df.to_excel(xlsx_path, index=False)
++        wrote_xlsx = True
++    else:
++        logger.info("Skipped large Excel cache for %s (%d cells); pickle cache written.", path_no_ext.name, cell_count)
+     # Only attempt parquet if an engine is available to avoid noisy pandas ImportErrors.
+     def _detect_parquet_engine() -> str | None:
+         try:
+@@ -209,16 +245,52 @@
+     engine = _detect_parquet_engine()
+     if not engine:
+         logger.debug("Parquet engine not found; skipping parquet cache for %s. Excel written.", path_no_ext.name)
+-        return "xlsx"
++        return "pkl+xlsx" if wrote_xlsx else "pkl"
+ 
+     try:
+         parquet_path = path_no_ext.with_suffix(".parquet")
+         # pass explicit engine to avoid pandas attempting autodetect and raising long errors
+         df.to_parquet(parquet_path, index=False, engine=engine)
+-        return "parquet+xlsx"
++        return "pkl+parquet+xlsx" if wrote_xlsx else "pkl+parquet"
+     except Exception as exc:
+         logger.warning("Failed to write parquet for %s; falling back to Excel. (%s)", path_no_ext.name, str(exc))
+-        return "xlsx"
++        return "pkl+xlsx" if wrote_xlsx else "pkl"
++
++
++def cache_signature(path: Path) -> dict[str, object]:
++    """Return a small signature for cache invalidation."""
++    p = path.resolve()
++    if not p.exists():
++        return {"path": str(p), "missing": True}
++    st = p.stat()
++    return {"path": str(p), "mtime_ns": st.st_mtime_ns, "size": st.st_size}
++
++
++def read_df_cache(cache_path: Path, source_sig: dict[str, object], logger: logging.Logger) -> pd.DataFrame | None:
++    """Read a DataFrame cache if its source signature still matches."""
++    meta_path = cache_path.with_suffix(cache_path.suffix + ".meta.json")
++    if not cache_path.exists() or not meta_path.exists():
++        return None
++    try:
++        meta = json.loads(meta_path.read_text(encoding="utf-8"))
++        if meta.get("source") != source_sig:
++            return None
++        return pd.read_pickle(cache_path)
++    except Exception as exc:
++        logger.debug("Ignoring stale/unreadable cache %s (%s).", cache_path.name, exc)
++        return None
++
++
++def write_df_cache(df: pd.DataFrame, cache_path: Path, source_sig: dict[str, object], logger: logging.Logger) -> None:
++    """Write a DataFrame pickle cache with source signature metadata."""
++    try:
++        cache_path.parent.mkdir(parents=True, exist_ok=True)
++        df.to_pickle(cache_path)
++        cache_path.with_suffix(cache_path.suffix + ".meta.json").write_text(
++            json.dumps({"source": source_sig}, indent=2), encoding="utf-8"
++        )
++    except Exception as exc:
++        logger.debug("Could not write DataFrame cache %s (%s).", cache_path.name, exc)
+ 
+ 
+ # ---------------------------------------------------------------------------
