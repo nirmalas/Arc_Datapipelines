@@ -1,0 +1,140 @@
+pipeline {
+    agent {
+        label 'windows'
+    }
+
+    options {
+        buildDiscarder(logRotator(daysToKeepStr: '30', numToKeepStr: '100'))
+        timeout(time: 1, unit: 'HOURS')
+        disableConcurrentBuilds()
+        timestamps()
+    }
+
+    parameters {
+        string(name: 'PROJECT_CODE', defaultValue: 'WWHD', description: 'Project code from projectwise-project-dictionary.json')
+        string(name: 'USER_NAME', defaultValue: '', description: 'ProjectWise user name to create or update')
+        string(name: 'EMAIL', defaultValue: '', description: 'Email address for the user')
+        string(name: 'DESCRIPTION', defaultValue: '', description: 'Optional ProjectWise description')
+        booleanParam(name: 'IMS_USER', defaultValue: true, description: 'Create as IMS user when true')
+        password(name: 'PASSWORD_OVERRIDE', defaultValue: '', description: 'Only used when IMS_USER is false')
+        string(name: 'USER_GROUPS', defaultValue: '', description: 'Comma-separated ProjectWise groups')
+        string(name: 'USER_LISTS', defaultValue: '', description: 'Comma-separated ProjectWise user lists')
+        string(name: 'SECURITY_PROVIDER', defaultValue: '', description: 'Optional SecurityProvider value')
+        string(name: 'INITIAL', defaultValue: '', description: 'Optional Initial value')
+        string(name: 'TB_NAME', defaultValue: '', description: 'Optional TBName value')
+        string(name: 'ORIGIN_CODE', defaultValue: '', description: 'Optional OriginCode value')
+        string(name: 'ORIGINATOR', defaultValue: '', description: 'Optional Originator value')
+        string(name: 'DISCIPLINE', defaultValue: '', description: 'Optional Discipline value')
+        string(name: 'GRADE', defaultValue: '', description: 'Optional Grade value')
+        string(name: 'DISCIPLINE_CODE', defaultValue: '', description: 'Optional DisciplineCode value')
+        string(name: 'GRADE_LEVEL', defaultValue: '', description: 'Optional GradeLevel value')
+        string(name: 'CALLBACK_URL', defaultValue: '', description: 'Optional callback URL')
+        password(name: 'CALLBACK_TOKEN', defaultValue: '', description: 'Optional callback bearer token')
+        string(name: 'CORRELATION_ID', defaultValue: '', description: 'Optional correlation ID')
+        booleanParam(name: 'UPDATE_GROUPS_LISTS', defaultValue: false, description: 'Optional pre-step: query ProjectWise and refresh allowedUserGroups/allowedUserLists in dictionary')
+        booleanParam(name: 'DRY_RUN', defaultValue: true, description: 'Validate only without changing ProjectWise')
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Run PowerShell Onboarding') {
+            steps {
+                script {
+                    if (!params.PROJECT_CODE?.trim()) {
+                        error('PROJECT_CODE is required.')
+                    }
+                    if (!params.USER_NAME?.trim()) {
+                        error('USER_NAME is required.')
+                    }
+                    if (!params.EMAIL?.trim()) {
+                        error('EMAIL is required.')
+                    }
+                }
+
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'pw-adl-automation',
+                        usernameVariable: 'PW_USER',
+                        passwordVariable: 'PW_PASSWORD'
+                    )
+                ]) {
+                    withEnv([
+                        'PW_WWHD_USER=' + env.PW_USER,
+                        'PW_WWHD_PASSWORD=' + env.PW_PASSWORD
+                    ]) {
+                        powershell '''
+$ErrorActionPreference = 'Stop'
+
+$scriptDir = Join-Path $env:WORKSPACE 'python_scripts/ADL/ADLPortal_PW_Onboarding'
+Set-Location $scriptDir
+
+$groups = @()
+if (-not [string]::IsNullOrWhiteSpace($env:USER_GROUPS)) {
+    $groups = @($env:USER_GROUPS.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
+
+$lists = @()
+if (-not [string]::IsNullOrWhiteSpace($env:USER_LISTS)) {
+    $lists = @($env:USER_LISTS.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
+
+$invokeParams = @{
+    Project        = $env:PROJECT_CODE
+    UserName       = $env:USER_NAME
+    Email          = $env:EMAIL
+    Description    = $env:DESCRIPTION
+    IMSUser        = [System.Convert]::ToBoolean($env:IMS_USER)
+    SecurityProvider = $env:SECURITY_PROVIDER
+    Initial        = $env:INITIAL
+    TBName         = $env:TB_NAME
+    OriginCode     = $env:ORIGIN_CODE
+    Originator     = $env:ORIGINATOR
+    Discipline     = $env:DISCIPLINE
+    Grade          = $env:GRADE
+    DisciplineCode = $env:DISCIPLINE_CODE
+    GradeLevel     = $env:GRADE_LEVEL
+    DictionaryPath = '.\\projectwise-project-dictionary.json'
+    CallbackUrl    = $env:CALLBACK_URL
+    CallbackToken  = $env:CALLBACK_TOKEN
+    CorrelationId  = $env:CORRELATION_ID
+}
+
+if (-not [string]::IsNullOrWhiteSpace($env:PASSWORD_OVERRIDE)) {
+    $invokeParams.Password = $env:PASSWORD_OVERRIDE
+}
+if ($groups.Count -gt 0) {
+    $invokeParams.UserGroups = $groups
+}
+if ($lists.Count -gt 0) {
+    $invokeParams.UserLists = $lists
+}
+if ($env:DRY_RUN -eq 'true') {
+    $invokeParams.DryRun = $true
+}
+if ($env:UPDATE_GROUPS_LISTS -eq 'true') {
+    $invokeParams.UpdateGroupsLists = $true
+}
+
+$result = & '.\\Invoke-PWUserOnboarding.ps1' @invokeParams
+$result | Tee-Object -FilePath '.\\pw-result.json'
+'''
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts(
+                artifacts: 'python_scripts/ADL/ADLPortal_PW_Onboarding/pw-result.json',
+                allowEmptyArchive: true
+            )
+        }
+    }
+}
