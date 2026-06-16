@@ -1,0 +1,9 @@
+pandas
+numpy
+openpyxl
+azure-storage-blob
+azure-identity
+Office365-REST-Python-Client
+requests
+msal
+pyodbc

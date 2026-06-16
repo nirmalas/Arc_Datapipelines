@@ -1,4 +1,4 @@
-"""
+﻿"""
 main.py — End-to-end orchestrator for ACBOS/MPDT Pipeline V2.
 
 Pipeline steps (each runnable individually):
@@ -550,7 +550,23 @@ def main() -> None:
     workspace = resolve_workspace(args.workspace)
     cfg = load_config(workspace)
 
-    # Apply CLI overrides
+    
+    if args.log_level:
+        cfg["log_level"] = args.log_level
+    if args.batch_size:
+        cfg["batch_size"] = args.batch_size
+
+    # Setup early so remote input sync is logged before local files are read.
+    (workspace / "Output").mkdir(parents=True, exist_ok=True)
+    logger = setup_logger(workspace, "pipeline", cfg.get("log_level", "INFO"))
+
+    from utils.storage_io import sync_inputs, upload_outputs, write_sync_result
+
+    input_sync_result = sync_inputs(workspace, cfg, logger.getChild("storage"))
+    if input_sync_result.get("enabled"):
+        write_sync_result(workspace, "input_sync_result.json", input_sync_result)
+
+    # Apply CLI overrides after input sync because target/matchup files may be remote-managed inputs.
     _matchup_map: dict[str, str] = {}
     _acbos_matchup_map: dict[str, str] = {}
     _config_target_uaids = [
@@ -594,15 +610,6 @@ def main() -> None:
     refresh_sources = args.refresh_sources or args.no_cache
     if refresh_sources:
         cfg["data_source_mode"] = "external"
-    if args.log_level:
-        cfg["log_level"] = args.log_level
-    if args.batch_size:
-        cfg["batch_size"] = args.batch_size
-
-    # Setup
-    (workspace / "Output").mkdir(parents=True, exist_ok=True)
-    logger = setup_logger(workspace, "pipeline", cfg.get("log_level", "INFO"))
-
     logger.info("=" * 60)
     logger.info("ACBOS/MPDT Pipeline V2 — %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     logger.info("Workspace: %s", workspace)
@@ -722,7 +729,16 @@ def main() -> None:
     summary["elapsed_seconds"] = round(elapsed, 1)
     summary["status"] = "success"
     summary["output_dir"] = str(output_dir)
+    if input_sync_result.get("enabled"):
+        summary["input_sync"] = input_sync_result
     write_json(workspace / "Output" / "pipeline_summary.json", summary)
+
+    
+    output_sync_result = upload_outputs(workspace, cfg, output_dir, logger.getChild("storage"))
+    if output_sync_result.get("enabled"):
+        summary["output_sync"] = output_sync_result
+        write_json(workspace / "Output" / "pipeline_summary.json", summary)
+        write_sync_result(workspace, "output_sync_result.json", output_sync_result)
 
     logger.info("=" * 60)
     logger.info("Pipeline complete in %.1fs", elapsed)

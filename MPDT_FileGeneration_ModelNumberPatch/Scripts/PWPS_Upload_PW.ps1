@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Upload a generated ACBOS or MPDT file to ProjectWise.
 
@@ -14,6 +14,9 @@
 
 .PARAMETER UserName
     ProjectWise username.
+
+.PARAMETER Password
+    Optional ProjectWise password. If omitted, the script prompts securely.
 
 .PARAMETER PWFolderPath
     Target folder path in ProjectWise where the file will be uploaded.
@@ -32,6 +35,7 @@ param(
 
     [string]$DatasourceName = 'arcadis-uk-pw.bentley.com:arcadis-uk-07',
     [string]$UserName       = '_asc_user_automation',
+    [string]$Password       = '',
     [string]$PWFolderPath   = '',  # Set to the target PW folder path
     [string]$DocumentName   = '',
     [string]$Description    = '',
@@ -194,7 +198,7 @@ public static class Kernel32 {
 try {
     Import-Module pwps_dab -ErrorAction Stop
 } catch {
-    Write-Error "Failed to import pwps_dab. Install with: Install-Module pwps_dab -Scope CurrentUser"
+    Write-Error "Failed to import pwps_dab: $_. Install with: Install-Module pwps_dab -Scope CurrentUser"
     exit 1
 }
 
@@ -209,7 +213,11 @@ try {
 # Connect
 # ---------------------------------------------------------------------------
 try {
-    $PWPassword = Read-Host -Prompt "ProjectWise password for $UserName" -AsSecureString
+    if ([string]::IsNullOrWhiteSpace($Password)) {
+        $PWPassword = Read-Host -Prompt "ProjectWise password for $UserName" -AsSecureString
+    } else {
+        $PWPassword = ConvertTo-SecureString $Password -AsPlainText -Force
+    }
     New-PWLogin -DatasourceName $DatasourceName -UserName $UserName -Password $PWPassword
     Write-Host "Connected to ProjectWise."
 } catch {
@@ -343,3 +351,4 @@ try {
 try { Remove-PWLogin } catch { <# ignore #> }
 
 Write-Host "Upload complete: $FileName"
+
