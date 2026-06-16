@@ -1,10 +1,10 @@
-"""
-mpdt_generator/acbos_generator.py — Generate .ACBOS files for target UAID_2 assets.
+﻿"""
+mpdt_generator/acbos_generator.py â€” Generate .ACBOS files for target UAID_2 assets.
 
 An .ACBOS file is a ZIP archive containing:
-  Setup.BIN   — copied verbatim from template
-  Key.BIN     — copied verbatim from template
-  Data.XML    — generated from AssetsScope3 rows for the target UAID_2
+  Setup.BIN   â€” copied verbatim from template
+  Key.BIN     â€” copied verbatim from template
+  Data.XML    â€” generated from AssetsScope3 rows for the target UAID_2
 
 Can be run standalone:
   python -m mpdt_generator.acbos_generator --workspace . --target-uaid2 HS2-00002NSXW
@@ -39,7 +39,7 @@ from utils.common import (
 )
 
 
-# Columns NOT written as <Attribute> elements — structural only
+# Columns NOT written as <Attribute> elements â€” structural only
 _STRUCTURAL_COLS = {
     "id", "objectid", "ClassificationItemId", "ClsfItemId", "Alignment", "AlgnmPln",
     "Deleted", "ObjectState", "WsGuid", "AssociatedModelFile",
@@ -50,6 +50,7 @@ _STRUCTURAL_NORMS = {normalize_text(c) for c in _STRUCTURAL_COLS}
 # ASC no longer requires Com_AssetRef.  Omit it from every generated ACBOS even
 # if it appears in older templates, LoDM, or L3 DB extracts.
 _OMITTED_ATTRIBUTE_CODES = {"comassetref", "assetref"}
+_REQUIRED_EVEN_WHEN_BLANK_ATTRIBUTE_CODES = {"omasststs"}
 
 # ACBOS must always include these core asset/location/quantity attributes when
 # values exist in the L3/Scope3 row.  The sample ACBOS file is only a package
@@ -74,6 +75,7 @@ _ACBOS_PERMANENT_ATTRIBUTE_NAMES = [
     # exist, while flexible lookup below handles underscore/colon variants.
     "Com_Dsgnr",
     "Com_Cntrctr",
+    "O&M_AsstSts",
 ]
 
 _RE_ATT_SEP = re.compile(r'[\s_\-\.:&]+')
@@ -285,6 +287,14 @@ def extract_template_data(
 
 def find_templates(workspace: Path, cfg: dict, logger: logging.Logger) -> list[Path]:
     """Find ACBOS template files, sorted deterministically."""
+    configured_file = cfg.get("paths", {}).get("acbos_template_file", "")
+    if configured_file:
+        template_path = (workspace / configured_file).resolve()
+        if template_path.exists():
+            logger.info("Using configured ACBOS template: %s", template_path)
+            return [template_path]
+        logger.warning("Configured ACBOS template not found: %s", template_path)
+
     tpl_dir = workspace / cfg.get("paths", {}).get("acbos_template_dir", "Input/ACBOS_Templates")
     if tpl_dir.exists():
         candidates = sorted(list(tpl_dir.glob("*.ACBOS")) + list(tpl_dir.glob("*.acbos")))
@@ -449,7 +459,7 @@ def build_data_xml(rows: pd.DataFrame, template: AcbosTemplate | None, lodm_attr
                 break
         obj_elem.set("Id", obj_id)
 
-        # ClassificationItemId — check ClassificationItemId, then ClsfItemId, then HS2_Class
+        # ClassificationItemId â€” check ClassificationItemId, then ClsfItemId, then HS2_Class
         cls_id = ""
         for candidate in ("ClassificationItemId", "ClsfItemId", "HS2_Class"):
             val = _value_from_row_by_normalized_name(row, normalize_text(candidate))
@@ -458,7 +468,7 @@ def build_data_xml(rows: pd.DataFrame, template: AcbosTemplate | None, lodm_attr
                 break
         obj_elem.set("ClassificationItemId", cls_id)
 
-        # Alignment — check Alignment, then AlgnmPln
+        # Alignment â€” check Alignment, then AlgnmPln
         alignment = ""
         for candidate in ("Alignment", "AlgnmPln"):
             val = _value_from_row_by_normalized_name(row, normalize_text(candidate))
@@ -489,6 +499,8 @@ def build_data_xml(rows: pd.DataFrame, template: AcbosTemplate | None, lodm_attr
 
         for attr_name in attribute_names:
             norm_name = normalize_text(attr_name)
+            attr_code = _norm_att_code(attr_name)
+            required_even_when_blank = attr_code in _REQUIRED_EVEN_WHEN_BLANK_ATTRIBUTE_CODES
             if norm_name in _STRUCTURAL_NORMS or _is_omitted_attribute(attr_name):
                 continue
             # First try exact normalised name, then flexible attribute-code matching
@@ -501,10 +513,10 @@ def build_data_xml(rows: pd.DataFrame, template: AcbosTemplate | None, lodm_attr
 
             # Literal string 'None' is a valid value for Com:RfrncNmbr and any
             # other L3 attribute.  Only true Python/Excel missing values are skipped.
-            if _is_empty(val):
+            if _is_empty(val) and not required_even_when_blank:
                 continue
-            str_val = _clean_xml_attr_text(val)
-            if not str_val:
+            str_val = "" if _is_empty(val) else _clean_xml_attr_text(val)
+            if not str_val and not required_even_when_blank:
                 continue
 
             meta = _metadata_for_attribute(attr_metadata, attr_name)
@@ -589,11 +601,11 @@ def generate_single_acbos(
         _uaid2_norms = {normalize_text(x) for x in ("UAID_2", "uaid_2", "uaid2", "ParentUaid", "Parent_UAID")}
         uaid2_col = next((c for c in scope3.columns if normalize_text(c) in _uaid2_norms), None)
         if not uaid2_col:
-            logger.warning("  Cannot find UAID_2 column in AssetsScope3 — skipping %s", uaid2)
+            logger.warning("  Cannot find UAID_2 column in AssetsScope3 â€” skipping %s", uaid2)
             return None
         rows = scope3[scope3[uaid2_col].map(_upper_key) == _upper_key(uaid2)].copy()
     if rows.empty:
-        logger.warning("  No AssetsScope3 rows for UAID_2=%s — skipping", uaid2)
+        logger.warning("  No AssetsScope3 rows for UAID_2=%s â€” skipping", uaid2)
         return None
 
     logger.info("  %s: %d scope3 rows", uaid2, len(rows))
