@@ -44,7 +44,6 @@ param(
     [string]$AttributesJson = ''
 )
 
-Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 if (-not (Test-Path $FilePath)) {
@@ -196,11 +195,25 @@ public static class Kernel32 {
 # Import module
 # ---------------------------------------------------------------------------
 try {
-    Import-Module pwps_dab -ErrorAction Stop
+    # pwps_dab can emit non-terminating import-time errors on some ProjectWise
+    # installs, especially under strict/Stop preference. Import it softly, then
+    # explicitly verify the module is available before continuing.
+    $PreviousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    Import-Module pwps_dab -ErrorAction Continue -WarningAction SilentlyContinue
+    $ErrorActionPreference = $PreviousErrorActionPreference
+
+    if (-not (Get-Module -Name pwps_dab)) {
+        throw 'pwps_dab did not load into the current PowerShell session.'
+    }
 } catch {
+    $ErrorActionPreference = 'Stop'
     Write-Error "Failed to import pwps_dab: $_. Install with: Install-Module pwps_dab -Scope CurrentUser"
     exit 1
 }
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 
 try {
     Test-PWNativeRuntime
