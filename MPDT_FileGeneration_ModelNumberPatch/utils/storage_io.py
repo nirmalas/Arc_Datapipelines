@@ -33,6 +33,15 @@ def _local_path(workspace: Path, rel_path: str) -> Path:
     return path if path.is_absolute() else (workspace / path).resolve()
 
 
+def _default_remote_for_local(rel_path: str) -> str:
+    """Map local Input/foo paths to remote foo paths under input base_path."""
+    normalized = str(rel_path or "").replace("\\", "/").strip("/")
+    parts = normalized.split("/")
+    if parts and parts[0].lower() == "input":
+        return "/".join(parts[1:])
+    return normalized
+
+
 def _get_secret(cfg: dict[str, Any], key: str, env_key: str | None = None) -> str:
     value = cfg.get(key)
     if value:
@@ -114,6 +123,18 @@ def _build_sharepoint_client(storage_cfg: dict[str, Any]):
     client_secret = _get_secret(storage_cfg, "client_secret", "client_secret_env")
     username = _get_secret(storage_cfg, "username", "username_env")
     password = _get_secret(storage_cfg, "password", "password_env")
+    if not ((client_id and client_secret) or (username and password)):
+        client_id_env = str(storage_cfg.get("client_id_env", "SHAREPOINT_CLIENT_ID")).strip()
+        client_secret_env = str(storage_cfg.get("client_secret_env", "SHAREPOINT_CLIENT_SECRET")).strip()
+        username_env = str(storage_cfg.get("username_env", "SHAREPOINT_USERNAME")).strip()
+        password_env = str(storage_cfg.get("password_env", "SHAREPOINT_PASSWORD")).strip()
+        raise ValueError(
+            "SharePoint credentials were not found. Set app credentials in the same process "
+            f"before running Python: ${client_id_env} and ${client_secret_env}. "
+            "Alternatively set user credentials: "
+            f"${username_env} and ${password_env}. Do not put secret values in *_env fields; "
+            "those fields must contain environment variable names."
+        )
     return SharePointClient(
         site_url=site_url,
         client_id=client_id or None,
@@ -148,7 +169,7 @@ def _resolve_input_item(workspace: Path, cfg: dict[str, Any], location_cfg: dict
         raise ValueError(f"Input location item is missing local_path/path_key: {item}")
 
     local_path = _local_path(workspace, rel_path)
-    default_remote = rel_path.replace("\\", "/")
+    default_remote = _default_remote_for_local(rel_path)
     remote_file = str(item.get("remote_path") or item.get("blob") or item.get("sharepoint_file") or "").strip()
     remote_prefix = str(item.get("remote_prefix") or item.get("blob_prefix") or item.get("sharepoint_folder") or "").strip()
     base_path = str(location_cfg.get("base_path", "")).strip()
@@ -208,6 +229,10 @@ def sync_inputs(workspace: Path, cfg: dict[str, Any], logger: logging.Logger) ->
             item_type, local_path, remote = _resolve_input_item(workspace, cfg, location_cfg, item)
             if item_type in {"prefix", "directory", "dir"}:
                 names = sp.list_files(remote)
+                if not names:
+                    result["missing"].append(remote)
+                    if fail_on_missing:
+                        raise FileNotFoundError(f"SharePoint folder not found or empty: {remote}")
                 for name in names:
                     target_path = local_path / name
                     target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -233,6 +258,44 @@ def _iter_output_files(output_dir: Path, include_patterns: list[str] | None = No
     return sorted(set(files))
 
 
+def _output_roots(workspace: Path, output_dir: Path, location_cfg: dict[str, Any]) -> list[Path]:
+    roots: list[Path] = []
+    seen: set[str] = set()
+
+    def add_root(path: Path) -> None:
+        resolved = path if path.is_absolute() else (workspace / path)
+        resolved = resolved.resolve()
+        key = str(resolved).lower()
+        if resolved.exists() and key not in seen:
+            seen.add(key)
+            roots.append(resolved)
+
+    add_root(output_dir)
+    for pattern in location_cfg.get("extra_paths") or []:
+        text = str(pattern or "").strip()
+        if not text:
+            continue
+        for match in workspace.glob(text):
+            add_root(match)
+    return roots
+
+
+def _iter_output_root_files(workspace: Path, output_dir: Path, location_cfg: dict[str, Any], include_patterns: list[str]) -> list[tuple[Path, Path]]:
+    files: list[tuple[Path, Path]] = []
+    seen: set[str] = set()
+    for root in _output_roots(workspace, output_dir, location_cfg):
+        if root.is_file():
+            candidates = [root]
+        else:
+            candidates = _iter_output_files(root, include_patterns)
+        for local_path in candidates:
+            key = str(local_path.resolve()).lower()
+            if key not in seen:
+                seen.add(key)
+                files.append((root, local_path))
+    return files
+
+
 def upload_outputs(workspace: Path, cfg: dict[str, Any], output_dir: Path, logger: logging.Logger) -> dict[str, Any]:
     """Upload pipeline outputs from local Output*/ folder to SharePoint or Blob."""
     location_cfg = _location_config(cfg, "output_location")
@@ -242,7 +305,7 @@ def upload_outputs(workspace: Path, cfg: dict[str, Any], output_dir: Path, logge
         return {"enabled": False, "type": "local", "uploaded": 0, "errors": []}
 
     include_patterns = location_cfg.get("include_patterns") or ["*.xlsx", "*.xlsm", "*.xls", "*.csv", "*.json", "*.ACBOS"]
-    files = _iter_output_files(output_dir, include_patterns)
+    files = _iter_output_root_files(workspace, output_dir, location_cfg, include_patterns)
     result: dict[str, Any] = {"enabled": True, "type": location_type, "uploaded": 0, "files": [], "errors": []}
 
     logger.info("Output upload enabled: type=%s files=%d", location_type, len(files))
@@ -253,10 +316,10 @@ def upload_outputs(workspace: Path, cfg: dict[str, Any], output_dir: Path, logge
             raise ValueError("output_location.type=blob requires output_location.container.")
         container_client = _build_blob_service_client(location_cfg).get_container_client(container)
         base_path = str(location_cfg.get("base_path", "")).strip()
-        for local_path in files:
+        for root, local_path in files:
             try:
-                rel = local_path.relative_to(output_dir).as_posix()
-                blob_name = _join_remote(base_path, output_dir.name, rel)
+                rel = local_path.relative_to(root).as_posix() if root.is_dir() else local_path.name
+                blob_name = _join_remote(base_path, root.name, rel)
                 _upload_blob_file(container_client, blob_name, local_path)
                 result["uploaded"] += 1
                 result["files"].append({"local": str(local_path), "remote": blob_name})
@@ -268,10 +331,10 @@ def upload_outputs(workspace: Path, cfg: dict[str, Any], output_dir: Path, logge
     if location_type == "sharepoint":
         sp = _build_sharepoint_client(location_cfg)
         base_path = str(location_cfg.get("base_path", "")).rstrip("/")
-        for local_path in files:
+        for root, local_path in files:
             try:
-                rel_parent = local_path.relative_to(output_dir).parent.as_posix()
-                remote_folder = _join_remote(base_path, output_dir.name, "" if rel_parent == "." else rel_parent)
+                rel_parent = local_path.relative_to(root).parent.as_posix() if root.is_dir() else "."
+                remote_folder = _join_remote(base_path, root.name, "" if rel_parent == "." else rel_parent)
                 sp.upload_file(str(local_path), remote_folder)
                 result["uploaded"] += 1
                 result["files"].append({"local": str(local_path), "remote": _join_remote(remote_folder, local_path.name)})

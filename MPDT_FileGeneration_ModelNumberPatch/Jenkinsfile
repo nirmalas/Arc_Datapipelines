@@ -1,0 +1,49 @@
+pipeline {
+    agent { label 'windows-projectwise' }
+
+    parameters {
+        string(name: 'TARGET_UAID2', defaultValue: 'HS2-00003MM33', description: 'Comma or space separated UAID_2 values')
+        choice(name: 'FILE_TYPE', choices: ['AUTO', 'MPDT', 'ACBOS'], description: 'Generation mode')
+        choice(name: 'STEP', choices: ['all', 'step1', 'step2', 'step3', 'step4', 'step5', 'step6'], description: 'Pipeline step to run')
+        booleanParam(name: 'PUBLISH_PROJECTWISE', defaultValue: false, description: 'If checked, step6 performs live ProjectWise upload')
+        booleanParam(name: 'SKIP_PW_PREFLIGHT', defaultValue: false, description: 'Skip ProjectWise DLL/module preflight')
+        string(name: 'PROJECTWISE_BIN', defaultValue: 'C:\\Program Files\\Bentley\\ProjectWise\\bin', description: 'ProjectWise bin folder on the Jenkins agent')
+    }
+
+    environment {
+        PYTHONIOENCODING = 'utf-8'
+    }
+
+    stages {
+        stage('Run MPDT/ACBOS Pipeline') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'sharepoint-client-id', variable: 'SHAREPOINT_CLIENT_ID'),
+                    string(credentialsId: 'sharepoint-client-secret', variable: 'SHAREPOINT_CLIENT_SECRET'),
+                    string(credentialsId: 'pw-password', variable: 'PW_PASSWORD')
+                ]) {
+                    script {
+                        def publishFlag = params.PUBLISH_PROJECTWISE ? '-PublishProjectWise' : ''
+                        def preflightFlag = params.SKIP_PW_PREFLIGHT ? '-SkipPwPreflight' : ''
+                        powershell """
+                            .\\Scripts\\Run-JenkinsPipeline.ps1 `
+                                -TargetUAID2 \"${params.TARGET_UAID2}\" `
+                                -FileType ${params.FILE_TYPE} `
+                                -Step ${params.STEP} `
+                                -ProjectWiseBin \"${params.PROJECTWISE_BIN}\" `
+                                -InstallDependencies `
+                                ${publishFlag} `
+                                ${preflightFlag}
+                        """
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: 'Output*/**/*,output_pw_*/**/*,Logs/**/*', allowEmptyArchive: true
+        }
+    }
+}

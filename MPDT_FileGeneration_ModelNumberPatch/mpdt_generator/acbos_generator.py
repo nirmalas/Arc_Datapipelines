@@ -1,10 +1,10 @@
-﻿"""
-mpdt_generator/acbos_generator.py â€” Generate .ACBOS files for target UAID_2 assets.
+"""
+mpdt_generator/acbos_generator.py - Generate .ACBOS files for target UAID_2 assets.
 
 An .ACBOS file is a ZIP archive containing:
-  Setup.BIN   â€” copied verbatim from template
-  Key.BIN     â€” copied verbatim from template
-  Data.XML    â€” generated from AssetsScope3 rows for the target UAID_2
+  Setup.BIN   - copied verbatim from template
+  Key.BIN     - copied verbatim from template
+  Data.XML    - generated from AssetsScope3 rows for the target UAID_2
 
 Can be run standalone:
   python -m mpdt_generator.acbos_generator --workspace . --target-uaid2 HS2-00002NSXW
@@ -39,7 +39,7 @@ from utils.common import (
 )
 
 
-# Columns NOT written as <Attribute> elements â€” structural only
+# Columns NOT written as <Attribute> elements - structural only
 _STRUCTURAL_COLS = {
     "id", "objectid", "ClassificationItemId", "ClsfItemId", "Alignment", "AlgnmPln",
     "Deleted", "ObjectState", "WsGuid", "AssociatedModelFile",
@@ -79,6 +79,7 @@ _ACBOS_PERMANENT_ATTRIBUTE_NAMES = [
 ]
 
 _RE_ATT_SEP = re.compile(r'[\s_\-\.:&]+')
+_REFERENCE_NONE_ATTRIBUTE_CODES = {"comrfrncnmbr"}
 _ZERO_GUID = '00000000-0000-0000-0000-000000000000'
 _XML_ILLEGAL_CHARS_RE = re.compile(
     '['
@@ -137,11 +138,16 @@ def _drop_omitted_attribute_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _value_from_row_by_attr_code(row: pd.Series, attr_name: str) -> Any:
+    found, value = _find_value_from_row_by_attr_code(row, attr_name)
+    return value if found else None
+
+
+def _find_value_from_row_by_attr_code(row: pd.Series, attr_name: str) -> tuple[bool, Any]:
     target = _norm_att_code(attr_name)
     for col, val in row.items():
         if _norm_att_code(col) == target:
-            return val
-    return None
+            return True, val
+    return False, None
 
 
 def _lodm_attr_names_by_class(lodm_df: pd.DataFrame | None) -> dict[str, list[str]]:
@@ -364,24 +370,32 @@ def _is_empty(v) -> bool:
     return s == "" or s.lower() in ("nan", "nat")
 
 
-def _clean_acbos_output_value(v: Any) -> Any:
-    """Return a value ready for ACBOS XML, preserving literal 'None'."""
+def _is_reference_none_attribute(attr_name: Any) -> bool:
+    return _norm_att_code(attr_name) in _REFERENCE_NONE_ATTRIBUTE_CODES
+
+
+def _clean_acbos_output_value(v: Any, attr_name: Any = None) -> Any:
+    """Return a value ready for ACBOS XML, preserving required literal 'None'."""
     if v is None:
-        return None
+        return "None" if _is_reference_none_attribute(attr_name) else None
     try:
         if pd.isna(v):
-            return None
+            return "None" if _is_reference_none_attribute(attr_name) else None
     except Exception:
         pass
     return v
 
 
 def _value_from_row_by_normalized_name(row: pd.Series, norm_name: str) -> Any:
+    found, value = _find_value_from_row_by_normalized_name(row, norm_name)
+    return value if found else None
+
+
+def _find_value_from_row_by_normalized_name(row: pd.Series, norm_name: str) -> tuple[bool, Any]:
     for col, val in row.items():
         if normalize_text(col) == norm_name:
-            return val
-    return None
-
+            return True, val
+    return False, None
 
 def _metadata_for_attribute(attr_metadata: dict[str, dict[str, str]], attr_name: str) -> dict[str, str]:
     """Return template metadata with XML/schema-safe defaults.
@@ -459,7 +473,7 @@ def build_data_xml(rows: pd.DataFrame, template: AcbosTemplate | None, lodm_attr
                 break
         obj_elem.set("Id", obj_id)
 
-        # ClassificationItemId â€” check ClassificationItemId, then ClsfItemId, then HS2_Class
+        # ClassificationItemId - check ClassificationItemId, then ClsfItemId, then HS2_Class
         cls_id = ""
         for candidate in ("ClassificationItemId", "ClsfItemId", "HS2_Class"):
             val = _value_from_row_by_normalized_name(row, normalize_text(candidate))
@@ -468,7 +482,7 @@ def build_data_xml(rows: pd.DataFrame, template: AcbosTemplate | None, lodm_attr
                 break
         obj_elem.set("ClassificationItemId", cls_id)
 
-        # Alignment â€” check Alignment, then AlgnmPln
+        # Alignment - check Alignment, then AlgnmPln
         alignment = ""
         for candidate in ("Alignment", "AlgnmPln"):
             val = _value_from_row_by_normalized_name(row, normalize_text(candidate))
@@ -506,13 +520,14 @@ def build_data_xml(rows: pd.DataFrame, template: AcbosTemplate | None, lodm_attr
             # First try exact normalised name, then flexible attribute-code matching
             # so DB columns such as O&M_AsstSts populate LoDM/template
             # O&M:AsstSts and do not leak onto classes where LoDM disallows it.
-            val = _value_from_row_by_normalized_name(row, norm_name)
-            val = _clean_acbos_output_value(val)
-            if _is_empty(val):
-                val = _clean_acbos_output_value(_value_from_row_by_attr_code(row, attr_name))
+            found, raw_val = _find_value_from_row_by_normalized_name(row, norm_name)
+            if not found:
+                found, raw_val = _find_value_from_row_by_attr_code(row, attr_name)
+            val = _clean_acbos_output_value(raw_val, attr_name) if found else None
 
-            # Literal string 'None' is a valid value for Com:RfrncNmbr and any
-            # other L3 attribute.  Only true Python/Excel missing values are skipped.
+            # Literal string 'None' is a valid value for Com:RfrncNmbr.  When
+            # the source column is present with a Python/Excel missing value,
+            # write the string 'None' instead of dropping the XML attribute.
             if _is_empty(val) and not required_even_when_blank:
                 continue
             str_val = "" if _is_empty(val) else _clean_xml_attr_text(val)
@@ -601,11 +616,11 @@ def generate_single_acbos(
         _uaid2_norms = {normalize_text(x) for x in ("UAID_2", "uaid_2", "uaid2", "ParentUaid", "Parent_UAID")}
         uaid2_col = next((c for c in scope3.columns if normalize_text(c) in _uaid2_norms), None)
         if not uaid2_col:
-            logger.warning("  Cannot find UAID_2 column in AssetsScope3 â€” skipping %s", uaid2)
+            logger.warning("  Cannot find UAID_2 column in AssetsScope3 - skipping %s", uaid2)
             return None
         rows = scope3[scope3[uaid2_col].map(_upper_key) == _upper_key(uaid2)].copy()
     if rows.empty:
-        logger.warning("  No AssetsScope3 rows for UAID_2=%s â€” skipping", uaid2)
+        logger.warning("  No AssetsScope3 rows for UAID_2=%s - skipping", uaid2)
         return None
 
     logger.info("  %s: %d scope3 rows", uaid2, len(rows))

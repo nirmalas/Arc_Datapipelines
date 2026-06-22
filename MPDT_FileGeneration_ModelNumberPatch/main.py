@@ -1,13 +1,13 @@
-﻿"""
-main.py — End-to-end orchestrator for ACBOS/MPDT Pipeline V2.
+"""
+main.py - End-to-end orchestrator for ACBOS/MPDT Pipeline V2.
 
 Pipeline steps (each runnable individually):
-  step1   — Data caching (DB + SmartForms + Trackers)
-  step2   — Build asset deliverables (PW + L2 + Tracker join)
-  step3   — Classify targets as MPDT or ACBOS
-  step4   — Generate MPDT files (batch)
-  step5   — Generate ACBOS files (batch)
-  step6   — Stage files for PW upload
+  step1   - Data caching (DB + SmartForms + Trackers)
+  step2   - Build asset deliverables (PW + L2 + Tracker join)
+  step3   - Classify targets as MPDT or ACBOS
+  step4   - Generate MPDT files (batch)
+  step5   - Generate ACBOS files (batch)
+  step6   - Stage files for PW upload
 
 Data sourcing:
   --refresh-sources   Fetch fresh data from external sources (DB, SmartForms API)
@@ -25,6 +25,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 from datetime import datetime
@@ -47,7 +48,7 @@ from utils.common import (
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="ACBOS/MPDT Pipeline V2 — end-to-end orchestrator",
+        description="ACBOS/MPDT Pipeline V2 - end-to-end orchestrator",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
@@ -218,9 +219,9 @@ def run_step1(workspace: Path, cfg: dict, logger, force_refresh: bool = False) -
     """Step 1: Optionally fetch fresh data from external sources and update local Input/ files.
 
     Control via config fetch_external flags:
-      fetch_external.db          → query L3 SQL Server → overwrite Input/l3_assets_scope_data.xlsx
-      fetch_external.smartforms  → fetch SmartForms API → overwrite Input/SmartForms_RAW_MPDT_L2&L3.xlsx
-      fetch_external.pw_extract  → run PWPS_Data_Extract.ps1 → overwrites Input/ACBOS MPDT.xlsx
+      fetch_external.db          - query L3 SQL Server - overwrite Input/l3_assets_scope_data.xlsx
+      fetch_external.smartforms  - fetch SmartForms API - overwrite Input/SmartForms_RAW_MPDT_L2&L3.xlsx
+      fetch_external.pw_extract  - run PWPS_Data_Extract.ps1 - overwrites Input/ACBOS MPDT.xlsx
 
     When all flags are False (default) Step 1 simply verifies that the local Input/ files exist
     and reports their row counts. Steps 2+ always read from the same Input/ files.
@@ -228,7 +229,7 @@ def run_step1(workspace: Path, cfg: dict, logger, force_refresh: bool = False) -
     force_refresh=True (set by --refresh-sources CLI flag) overrides all flags to True.
     """
     logger.info("=" * 50)
-    logger.info("STEP 1: Data Sources — L3 DB / SmartForms / ProjectWise")
+    logger.info("STEP 1: Data Sources - L3 DB / SmartForms / ProjectWise")
     logger.info("=" * 50)
 
     fetch_cfg = cfg.get("fetch_external", {})
@@ -244,14 +245,14 @@ def run_step1(workspace: Path, cfg: dict, logger, force_refresh: bool = False) -
     results: dict = {}
 
     # -----------------------------------------------------------------------
-    # L3 Database → Input/l3_assets_scope_data.xlsx
+    # L3 Database - Input/l3_assets_scope_data.xlsx
     # -----------------------------------------------------------------------
     if do_db:
-        logger.info("--- Fetching L3 Database → %s ---", scope3_path.name)
+        logger.info("--- Fetching L3 Database - %s ---", scope3_path.name)
         from data_fetcher.db_fetcher import fetch_all_db_tables
         try:
             db_results = fetch_all_db_tables(workspace, cfg, logger)
-            # AssetsScope3 is the canonical scope3 input — write it to the Input/ file.
+            # AssetsScope3 is the canonical scope3 input - write it to the Input/ file.
             scope3_df = db_results.get("AssetsScope3")
             if scope3_df is not None and not scope3_df.empty:
                 scope3_path.parent.mkdir(parents=True, exist_ok=True)
@@ -268,20 +269,20 @@ def run_step1(workspace: Path, cfg: dict, logger, force_refresh: bool = False) -
         if scope3_path.exists():
             import pandas as _pd
             _rows = len(_pd.read_excel(str(scope3_path), dtype=str, engine="openpyxl", usecols=[0]))
-            logger.info("  L3 DB   — using local: %s (%d rows)", scope3_path.name, _rows)
+            logger.info("  L3 DB   - using local: %s (%d rows)", scope3_path.name, _rows)
             results["scope3_rows"] = _rows
         else:
-            logger.warning("  L3 DB   — local file missing: %s  (set fetch_external.db=true to fetch)", scope3_path.name)
+            logger.warning("  L3 DB   - local file missing: %s  (set fetch_external.db=true to fetch)", scope3_path.name)
 
     # -----------------------------------------------------------------------
-    # SmartForms → Input/SmartForms_RAW_MPDT_L2&L3.xlsx
+    # SmartForms - Input/SmartForms_RAW_MPDT_L2&L3.xlsx
     # -----------------------------------------------------------------------
     if do_sf:
-        logger.info("--- Fetching SmartForms API → %s ---", sf_path.name)
+        logger.info("--- Fetching SmartForms API - %s ---", sf_path.name)
         from data_fetcher.smartforms_fetcher import fetch_smartforms_and_save
         try:
             l2_rows, l3_rows = fetch_smartforms_and_save(workspace, cfg, logger, sf_path)
-            logger.info("  SmartForms written — L2: %d, L3: %d", l2_rows, l3_rows)
+            logger.info("  SmartForms written - L2: %d, L3: %d", l2_rows, l3_rows)
             results["smartforms_l2_rows"] = l2_rows
             results["smartforms_l3_rows"] = l3_rows
         except Exception as exc:
@@ -289,18 +290,18 @@ def run_step1(workspace: Path, cfg: dict, logger, force_refresh: bool = False) -
             results["smartforms_error"] = str(exc)
     else:
         if sf_path.exists():
-            logger.info("  SmartForms — using local: %s", sf_path.name)
+            logger.info("  SmartForms - using local: %s", sf_path.name)
             results["smartforms_local"] = str(sf_path.name)
         else:
-            logger.warning("  SmartForms — local file missing: %s  (set fetch_external.smartforms=true to fetch)", sf_path.name)
+            logger.warning("  SmartForms - local file missing: %s  (set fetch_external.smartforms=true to fetch)", sf_path.name)
 
     # -----------------------------------------------------------------------
-    # ProjectWise extract → Input/ACBOS MPDT.xlsx  (via PowerShell script)
+    # ProjectWise extract - Input/ACBOS MPDT.xlsx  (via PowerShell script)
     # -----------------------------------------------------------------------
     if do_pw:
         ps1_rel = cfg.get("pw", {}).get("ps1_extract", "Scripts/PWPS_Data_Extract.ps1")
         ps1_path = (workspace / ps1_rel).resolve()
-        logger.info("--- Running PW extract script → %s ---", pw_path.name)
+        logger.info("--- Running PW extract script - %s ---", pw_path.name)
         if not ps1_path.exists():
             logger.warning("  PW PS1 script not found: %s", ps1_path)
             results["pw_error"] = "ps1_not_found"
@@ -312,7 +313,7 @@ def run_step1(workspace: Path, cfg: dict, logger, force_refresh: bool = False) -
                     capture_output=True, text=True, timeout=600,
                 )
                 if proc.returncode == 0:
-                    logger.info("  PW extract script completed OK — output: %s", pw_path.name)
+                    logger.info("  PW extract script completed OK - output: %s", pw_path.name)
                     results["pw_extract_ok"] = True
                 else:
                     logger.warning("  PW extract script exited %d:\n%s", proc.returncode, proc.stderr[-2000:])
@@ -322,10 +323,10 @@ def run_step1(workspace: Path, cfg: dict, logger, force_refresh: bool = False) -
                 results["pw_error"] = str(exc)
     else:
         if pw_path.exists():
-            logger.info("  PW extract — using local: %s", pw_path.name)
+            logger.info("  PW extract - using local: %s", pw_path.name)
             results["pw_local"] = str(pw_path.name)
         else:
-            logger.warning("  PW extract — local file missing: %s  (set fetch_external.pw_extract=true to fetch)", pw_path.name)
+            logger.warning("  PW extract - local file missing: %s  (set fetch_external.pw_extract=true to fetch)", pw_path.name)
 
     results["status"] = "success"
     logger.info("Step 1 complete.")
@@ -353,7 +354,7 @@ def run_step2(
     if l2_df is None:
         l2_df = load_l2_mapping(workspace, cfg, logger)
 
-    # Augment PW extract with matchup file rows (one row per UAID → DocumentName pair).
+    # Augment PW extract with matchup file rows (one row per UAID - DocumentName pair).
     # The matchup file provides the ASSET_ID link that the raw PW extract lacks.
     matchup_path_rel = cfg.get("paths", {}).get("matchup_file", "")
     matchup_extra_rows: list[dict] = []
@@ -366,7 +367,7 @@ def run_step2(
         for _uaid, _doc in (_mu_acbos_map or {}).items():
             _all_doc_map[(_uaid, Path(_doc).stem)] = Path(_doc).stem
         if _all_doc_map:
-            # Build a DocumentName→PW-row lookup for fast metadata enrichment.
+            # Build a DocumentName-PW-row lookup for fast metadata enrichment.
             pw_by_docname: dict[str, dict] = {}
             if pw_df is not None and not pw_df.empty and "DocumentName" in pw_df.columns:
                 for _, pw_row in pw_df.iterrows():
@@ -453,7 +454,7 @@ def run_step3(
     write_json(workspace / "Output" / "classification_plan.json", result)
 
     logger.info(
-        "Step 3 complete — MPDT:%d ACBOS:%d conflicts:%d skipped:%d",
+        "Step 3 complete - MPDT:%d ACBOS:%d conflicts:%d skipped:%d",
         len(result["mpdt_targets"]),
         len(result["acbos_targets"]),
         len(result["conflicts"]),
@@ -472,7 +473,7 @@ def run_step4(workspace: Path, cfg: dict, classification: dict, output_dir: Path
 
     mpdt_targets = classification.get("mpdt_targets", [])
     if not mpdt_targets:
-        logger.info("No MPDT targets — skipping.")
+        logger.info("No MPDT targets - skipping.")
         return {"status": "success", "generated": [], "errors": []}
 
     batch_size = cfg.get("batch_size", 5)
@@ -490,7 +491,7 @@ def run_step4(workspace: Path, cfg: dict, classification: dict, output_dir: Path
 
     final = {"status": "success" if not all_errors else "partial", "generated": all_generated, "errors": all_errors}
     write_json(workspace / "Output" / "mpdt_result.json", final)
-    logger.info("Step 4 complete — generated:%d errors:%d", len(all_generated), len(all_errors))
+    logger.info("Step 4 complete - generated:%d errors:%d", len(all_generated), len(all_errors))
     return final
 
 
@@ -504,7 +505,7 @@ def run_step5(workspace: Path, cfg: dict, classification: dict, output_dir: Path
 
     acbos_targets = classification.get("acbos_targets", [])
     if not acbos_targets:
-        logger.info("No ACBOS targets — skipping.")
+        logger.info("No ACBOS targets - skipping.")
         return {"status": "success", "generated": [], "errors": []}
 
     batch_size = cfg.get("batch_size", 5)
@@ -522,7 +523,7 @@ def run_step5(workspace: Path, cfg: dict, classification: dict, output_dir: Path
 
     final = {"status": "success" if not all_errors else "partial", "generated": all_generated, "errors": all_errors}
     write_json(workspace / "Output" / "acbos_result.json", final)
-    logger.info("Step 5 complete — generated:%d errors:%d", len(all_generated), len(all_errors))
+    logger.info("Step 5 complete - generated:%d errors:%d", len(all_generated), len(all_errors))
     return final
 
 
@@ -540,6 +541,22 @@ def run_step6(workspace: Path, cfg: dict, logger) -> dict:
     return result
 
 
+
+def _env_bool_override(name: str) -> bool | None:
+    value = os.environ.get(name)
+    if value is None:
+        return None
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _apply_environment_overrides(cfg: dict) -> None:
+    publish_override = _env_bool_override("MPDT_PUBLISH")
+    if publish_override is not None:
+        cfg["publish"] = publish_override
+
+    projectwise_bin = os.environ.get("PROJECTWISE_BIN", "").strip()
+    if projectwise_bin:
+        cfg.setdefault("pw", {})["projectwise_bin"] = projectwise_bin
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -549,6 +566,7 @@ def main() -> None:
 
     workspace = resolve_workspace(args.workspace)
     cfg = load_config(workspace)
+    _apply_environment_overrides(cfg)
 
     
     if args.log_level:
@@ -611,7 +629,7 @@ def main() -> None:
     if refresh_sources:
         cfg["data_source_mode"] = "external"
     logger.info("=" * 60)
-    logger.info("ACBOS/MPDT Pipeline V2 — %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    logger.info("ACBOS/MPDT Pipeline V2 - %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     logger.info("Workspace: %s", workspace)
     logger.info("Step: %s | Batch size: %d", args.step, cfg.get("batch_size", 5))
     logger.info("Data source: %s", "FORCED REFRESH (--refresh-sources)" if refresh_sources else "local Input/ files (set fetch_external.* in config to fetch from external)")
@@ -636,7 +654,7 @@ def main() -> None:
     output_dir = timestamped_dir(workspace, "Output") if step in ("all", "step4", "step5") else workspace / "Output"
 
     try:
-        # Shared DataFrames — loaded once when step2 precedes step3 to avoid double I/O.
+        # Shared DataFrames - loaded once when step2 precedes step3 to avoid double I/O.
         _shared_pw_df: pd.DataFrame | None = None
         _shared_l2_df: pd.DataFrame | None = None
 

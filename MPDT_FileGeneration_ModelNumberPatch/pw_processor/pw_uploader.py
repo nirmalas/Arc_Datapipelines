@@ -319,6 +319,7 @@ def upload_files(
         _add_pw_arg(cmd, "-Description", description)
         _add_pw_arg(cmd, "-Version", version)
         _add_pw_arg(cmd, "-Application", application)
+        _add_pw_arg(cmd, "-ProjectWiseBin", pw_cfg.get("projectwise_bin", ""))
         _add_pw_arg(cmd, "-AttributesJson", str(attributes_json) if attributes_json else "")
         rc = stream_subprocess(cmd, cwd=workspace, logger=logger)
         if rc == 0:
@@ -431,3 +432,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+

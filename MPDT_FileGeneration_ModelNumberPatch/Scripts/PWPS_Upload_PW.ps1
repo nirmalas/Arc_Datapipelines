@@ -41,7 +41,8 @@ param(
     [string]$Description    = '',
     [string]$Version        = '',
     [string]$Application    = '',
-    [string]$AttributesJson = ''
+    [string]$AttributesJson = '',
+    [string]$ProjectWiseBin = 'C:\Program Files\Bentley\ProjectWise\bin'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -171,10 +172,20 @@ function Test-PWNativeRuntime {
         throw 'pwps_dab requires a 64-bit PowerShell process for this ProjectWise installation.'
     }
 
+    $resolvedProjectWiseBin = (Resolve-Path -LiteralPath $ProjectWiseBin -ErrorAction Stop).ProviderPath
+    $ProjectWiseBin = $resolvedProjectWiseBin
+    $pathParts = @($env:Path -split ';' | Where-Object { $_ })
+    if ($pathParts -notcontains $ProjectWiseBin) {
+        $env:Path = "$ProjectWiseBin;$env:Path"
+    }
+
     $nativeSource = @'
 using System;
 using System.Runtime.InteropServices;
 public static class Kernel32 {
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern bool SetDllDirectory(string lpPathName);
+
     [DllImport("kernel32.dll", SetLastError=true)]
     public static extern IntPtr LoadLibrary(string lpFileName);
 }
@@ -184,6 +195,7 @@ public static class Kernel32 {
         Add-Type -TypeDefinition $nativeSource -Language CSharp -ErrorAction Stop
     }
 
+    [Kernel32]::SetDllDirectory($ProjectWiseBin) | Out-Null
     $handle = [Kernel32]::LoadLibrary($dllPath)
     if ($handle -eq [IntPtr]::Zero) {
         $win32Error = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
@@ -216,7 +228,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 try {
-    Test-PWNativeRuntime
+    Test-PWNativeRuntime -ProjectWiseBin $ProjectWiseBin
 } catch {
     Write-Error "ProjectWise native runtime check failed: $_"
     exit 1

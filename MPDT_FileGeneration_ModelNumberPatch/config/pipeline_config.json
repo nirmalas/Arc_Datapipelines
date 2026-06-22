@@ -2,8 +2,7 @@
     "output_directory":  "Output",
     "log_level":  "INFO",
     "batch_size":  5,
-    "target_uaid2":  [
-
+    "target_uaid2":  ["HS2-00002TG2C"
                      ],
     "file_type":  "AUTO",
     "missing_in_pw_file_type":  "ACBOS",
@@ -14,10 +13,10 @@
                            "_note":  "db=true: query L3 SQL Server, overwrite Input/l3_assets_scope_data.xlsx. smartforms=true: fetch via API, overwrite Input/SmartForms_RAW_MPDT_L2\u0026L3.xlsx. pw_extract=true: run Scripts/PWPS_Data_Extract.ps1, overwrite Input/ACBOS_MPDT.xlsx. Steps 2+ always read from these Input/ files regardless of these flags."
                        },
     "input_location":  {
-                           "enabled":  false,
-                           "type":  "local",
+                           "enabled":  true,
+                           "type":  "sharepoint",
                            "_note":  "Use type=sharepoint or type=blob to sync configured Input files before each run. Remote paths default to paths.* under base_path unless overridden in items.",
-                           "base_path":  "",
+                           "base_path":  "/teams/HS2ASC-RW/PMO/13 - IM - Information Management/42 - Digital Debt/05 - Level 3 Asset/Operations/Automated JSON/AutoCreate_MPDT_ACBOS/Input",
                            "fail_on_missing":  true,
                            "items":  [
                                          {
@@ -65,12 +64,17 @@
                                          },
                                          {
                                              "path_key":  "midp_navigator"
+                                         },
+                                         {
+                                             "path_key":  "pw_extract_full_columns"
                                          }
                                      ],
                            "sharepoint":  {
-                                              "site_url":  "https://arcadiso365.sharepoint.com/:f:/r/teams/HS2ASC-RW/PMO/13%20-%20IM%20-%20Information%20Management/42%20-%20Digital%20Debt/05%20-%20Level%203%20Asset/Operations/Automated%20JSON/AutoCreate_MPDT_ACBOS/Input?csf=1\u0026web=1\u0026e=cDBRdN",
-                                              "client_id_env":  "SHAREPOINT_CLIENT_ID",
-                                              "client_secret_env":  "SHAREPOINT_CLIENT_SECRET",
+                                              "site_url":  "https://arcadiso365.sharepoint.com/teams/HS2ASC-RW",
+                                              "client_id_env": "SHAREPOINT_CLIENT_ID",
+                                              "client_secret_env": "SHAREPOINT_CLIENT_SECRET",
+                                                //   "client_id_env":  "9ed58161-94b2-4a2a-8a46-1681c7825509",
+                                                //   "client_secret_env":  "5dKamqiVm5ngCB7bUhTEjAGpuvwiasdDDx9Uj0yTdT0=",
                                               "username_env":  "SHAREPOINT_USERNAME",
                                               "password_env":  "SHAREPOINT_PASSWORD"
                                           },
@@ -85,10 +89,10 @@
                                     }
                        },
     "output_location":  {
-                            "enabled":  false,
-                            "type":  "local",
+                            "enabled":  true,
+                            "type":  "sharepoint",
                             "_note":  "Use type=sharepoint or type=blob to upload generated Output files after a successful run.",
-                            "base_path":  "",
+                            "base_path":  "/teams/HS2ASC-RW/PMO/13 - IM - Information Management/42 - Digital Debt/05 - Level 3 Asset/Operations/Automated JSON/AutoCreate_MPDT_ACBOS/Output",
                             "include_patterns":  [
                                                      "*.xlsx",
                                                      "*.xlsm",
@@ -98,7 +102,7 @@
                                                      "*.ACBOS"
                                                  ],
                             "sharepoint":  {
-                                               "site_url":  "",
+                                               "site_url":  "https://arcadiso365.sharepoint.com/teams/HS2ASC-RW",
                                                "client_id_env":  "SHAREPOINT_CLIENT_ID",
                                                "client_secret_env":  "SHAREPOINT_CLIENT_SECRET",
                                                "username_env":  "SHAREPOINT_USERNAME",
@@ -112,7 +116,11 @@
                                          "sas_token_env":  "BLOB_SERVICE_SAS",
                                          "connection_string_env":  "MPDT_BLOB_CONNECTION_STRING",
                                          "managed_identity_client_id":  ""
-                                     }
+                                     },
+                            "extra_paths":  [
+                                                "Output",
+                                                "output_pw_*"
+                                            ]
                         },
     "allow_scope3_fallback_when_pw_missing":  true,
     "uaid_type_map":  {
@@ -161,7 +169,7 @@
            },
     "paths":  {
                   "pw_extract":  "Input/ACBOS_MPDT.xlsx",
-                  "matchup_file":  "Input/Planting MPDT Asset Matchup1.xlsx",
+                  "matchup_file":  "",
                   "target_uaid2_file":  "",
                   "pw_extract_full":  "Input/ACBOS_MPDT_FULL.xlsx",
                   "l3_assets_scope_data":  "Input/l3_assets_scope_data.xlsx",
@@ -178,7 +186,8 @@
                   "tracker_2024":  "Input/JSON Works Tracker 2024.xlsx",
                   "db_cache_dir":  "Input/DB_Cache",
                   "midp_navigator":  "Input/MIDP_Navigator.xlsx",
-                  "acbos_template_file":  "Input/ACBOS_Templates/C23-ASC-MASTER-L3V4_TLC5-ACBOS.ACBOS"
+                  "acbos_template_file":  "Input/ACBOS_Templates/C23-ASC-MASTER-L3V4_TLC5-ACBOS.ACBOS",
+                  "pw_extract_full_columns":  "Input/ACBOS MPDT_FULLColumns.xlsx"
               },
     "tracker_sheet_name":  "Central_Team",
     "publish":  false,
