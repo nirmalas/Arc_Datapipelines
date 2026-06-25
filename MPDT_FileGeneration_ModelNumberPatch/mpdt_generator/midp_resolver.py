@@ -2,10 +2,12 @@
 
 The resolver implements the business rule used by MPDT generation:
   1. Start from MIDP_Navigator.xlsx rows whose Assets column contains UAID_2.
-  2. Keep only DM3 deliverables.
-  3. If several remain, prefer rows whose description/name contains "solid".
-  4. If several still remain, cross-check against ACBOS MPDT / ProjectWise extract.
-  5. Return one unique deliverable number, otherwise blank.
+  2. Keep only rows where that Assets cell contains one asset.
+  3. Keep only deliverables whose final 6-digit sequence starts with 0.
+  4. Keep only DM3 model deliverables.
+  5. If several remain, prefer rows whose description/name contains "solid".
+  6. If several still remain, cross-check against ACBOS MPDT / ProjectWise extract.
+  7. Return one unique deliverable number, otherwise blank.
 """
 from __future__ import annotations
 
@@ -72,6 +74,7 @@ class ModelContainerResolver:
         self.midp_df = midp_df.copy() if midp_df is not None and not midp_df.empty else pd.DataFrame()
         self.asset_col = _pick_column(self.midp_df, ("Assets", "Asset", "Asset ID", "Asset_ID", "UAID", "UAID_2")) if not self.midp_df.empty else None
         self.deliverable_col = _pick_column(self.midp_df, ("Deliverable No", "Deliverable Number", "DocumentName", "Document Name")) if not self.midp_df.empty else None
+        self.deliverable_type_col = _pick_column(self.midp_df, ("Deliverable Type", "DeliverableType", "Document Type", "Doc Type", "Type")) if not self.midp_df.empty else None
         self.description_col = _pick_column(self.midp_df, ("Description", "Deliverable Name", "Deliverable Description", "Name")) if not self.midp_df.empty else None
         self.discipline_col = _pick_column(self.midp_df, ("Discipline", "Disc", "Discipline Code", "Discipline_Code")) if not self.midp_df.empty else None
         self.pw_document_tokens = _document_tokens_from_pw_extract(pw_df)
@@ -124,18 +127,77 @@ class ModelContainerResolver:
         parts = [p.strip().upper() for p in Path(str(value).strip()).stem.split("-") if p.strip()]
         return parts[2][:2] if len(parts) >= 3 else ""
 
+    @staticmethod
+    def _asset_items(value: Any) -> list[str]:
+        """Return distinct asset identifiers/items listed in a MIDP Assets cell."""
+        if _is_empty(value):
+            return []
+        text = str(value).strip()
+        hs2_ids = re.findall(r"HS2-[A-Za-z0-9]+", text, flags=re.IGNORECASE)
+        if hs2_ids:
+            seen: set[str] = set()
+            out: list[str] = []
+            for item in hs2_ids:
+                key = item.upper()
+                if key not in seen:
+                    seen.add(key)
+                    out.append(item)
+            return out
+        return [p.strip() for p in re.split(r"[,;|\n\r]+", text) if p.strip()]
+
+    @classmethod
+    def _has_one_asset(cls, value: Any) -> bool:
+        return len(cls._asset_items(value)) == 1
+
+    @staticmethod
+    def _has_zero_prefixed_final_sequence(value: Any) -> bool:
+        """True when the deliverable stem ends with a 6-digit segment starting with 0."""
+        if _is_empty(value):
+            return False
+        stem = Path(str(value).strip()).stem.upper()
+        return bool(re.search(r"-0\d{5}$", stem))
+
+    def _filter_dm3_models(self, df: pd.DataFrame) -> pd.DataFrame:
+        if df is None or df.empty or not self.deliverable_col:
+            return df
+
+        deliverable_text = df[self.deliverable_col].fillna("").astype(str)
+        mask = deliverable_text.str.contains("DM3", case=False, na=False)
+
+        if self.deliverable_type_col:
+            type_text = df[self.deliverable_type_col].fillna("").astype(str)
+            if type_text.str.strip().astype(bool).any():
+                type_mask = (
+                    type_text.str.contains("DM3", case=False, na=False)
+                    | type_text.str.contains(r"\b3D\b.*\bmodel\b|\bmodel\b", case=False, na=False, regex=True)
+                )
+                mask = mask & type_mask
+
+        return df[mask]
+
     def _base_candidates(self, uaid2: str) -> pd.DataFrame:
         if self.midp_df.empty or not self.asset_col or not self.deliverable_col or _is_empty(uaid2):
             return pd.DataFrame()
         uaid = str(uaid2).strip()
         if not uaid:
             return pd.DataFrame()
+
         asset_text = self.midp_df[self.asset_col].fillna("").astype(str)
         candidates = self.midp_df[asset_text.str.contains(re.escape(uaid), case=False, na=False)]
         if candidates.empty:
             return candidates
+
+        single_asset = candidates[self.asset_col].map(self._has_one_asset)
+        candidates = candidates[single_asset]
+        if candidates.empty:
+            return candidates
+
         deliverable_text = candidates[self.deliverable_col].fillna("").astype(str)
-        return candidates[deliverable_text.str.contains("DM3", case=False, na=False)]
+        candidates = candidates[deliverable_text.map(self._has_zero_prefixed_final_sequence)]
+        if candidates.empty:
+            return candidates
+
+        return self._filter_dm3_models(candidates)
 
     def _filter_by_discipline(self, df: pd.DataFrame, discipline: str | None) -> pd.DataFrame:
         disc = self._normalize_discipline_code(discipline)
@@ -201,10 +263,13 @@ class ModelContainerResolver:
                 "MIDP_Deliverable": "",
                 "MIDP_Discipline": "",
                 "Description": "",
+                "MIDP_Deliverable_Type": "",
+                "MIDP_Asset_Count": 0,
+                "Has_Zero_Prefixed_Final_Sequence": False,
                 "Matched_Discipline": False,
                 "Contains_Solid": False,
                 "Resolved_Model_Container_ID": "",
-                "Resolution_Status": "No DM3 MIDP match",
+                "Resolution_Status": "No MIDP match after single-asset, final-number and DM3 filters",
             }]
 
         disc = self._normalize_discipline_code(discipline)
@@ -221,6 +286,9 @@ class ModelContainerResolver:
                 "MIDP_Deliverable": "",
                 "MIDP_Discipline": "",
                 "Description": "",
+                "MIDP_Deliverable_Type": "",
+                "MIDP_Asset_Count": 0,
+                "Has_Zero_Prefixed_Final_Sequence": False,
                 "Matched_Discipline": False,
                 "Contains_Solid": False,
                 "Resolved_Model_Container_ID": "",
@@ -236,12 +304,16 @@ class ModelContainerResolver:
             if not midp_disc:
                 midp_disc = self._discipline_from_midp_deliverable(deliverable)
             desc = str(row.get(self.description_col, "")).strip() if self.description_col else ""
+            deliverable_type = str(row.get(self.deliverable_type_col, "")).strip() if self.deliverable_type_col else ""
             records.append({
                 "UAID_2": uaid2,
                 "MPDT_Discipline": disc,
                 "MIDP_Deliverable": deliverable,
                 "MIDP_Discipline": midp_disc,
                 "Description": desc,
+                "MIDP_Deliverable_Type": deliverable_type,
+                "MIDP_Asset_Count": len(self._asset_items(row.get(self.asset_col, ""))) if self.asset_col else 0,
+                "Has_Zero_Prefixed_Final_Sequence": self._has_zero_prefixed_final_sequence(deliverable),
                 "Matched_Discipline": bool(disc and midp_disc == disc),
                 "Contains_Solid": "solid" in desc.lower(),
                 "Resolved_Model_Container_ID": resolved,
