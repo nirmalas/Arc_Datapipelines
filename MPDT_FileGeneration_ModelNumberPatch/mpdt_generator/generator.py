@@ -27,7 +27,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from mpdt_generator.midp_resolver import build_model_container_resolver
+from mpdt_generator.midp_resolver import build_all_current_dm3_resolver, build_model_container_resolver
 
 from utils.common import (
     get_available_path,
@@ -927,39 +927,54 @@ def _latest_existing_pw_mpdt_row(uaid2: str, pw_df: pd.DataFrame) -> pd.Series |
 
 
 def _resolve_existing_mpdt_path(workspace: Path, pw_row: pd.Series) -> Path | None:
-    """Best-effort resolve of a locally accessible MPDT file path for a PW row."""
-    raw_paths = [
+    """Resolve a local existing MPDT without scanning whole Input/Output trees."""
+    raw_values = [
         str(pw_row.get("FullPath", "")).strip(),
         str(pw_row.get("FileName", "")).strip(),
         str(pw_row.get("DocumentName", "")).strip(),
     ]
 
-    for raw in raw_paths:
+    direct_candidates: list[Path] = []
+    for raw in raw_values:
         if not raw:
             continue
         p = Path(raw)
-        if p.is_absolute() and p.exists():
-            return p
-        p2 = (workspace / raw).resolve()
-        if p2.exists():
-            return p2
+        direct_candidates.append(p if p.is_absolute() else (workspace / raw))
 
-    # Fall back to a local name search under Input/ and Output/.
-    filename_candidates = [
-        str(pw_row.get("FileName", "")).strip(),
-        str(pw_row.get("DocumentName", "")).strip(),
-    ]
-    stems = {Path(v).name for v in filename_candidates if v}
-    for root_rel in ("Input", "Output"):
-        root = (workspace / root_rel).resolve()
-        if not root.exists():
+    names: set[str] = set()
+    for raw in raw_values[1:]:
+        if not raw:
             continue
-        for s in stems:
-            if not s:
-                continue
-            for hit in root.rglob(s):
-                if hit.is_file():
-                    return hit
+        p = Path(raw)
+        if p.suffix.lower() in {".xls", ".xlsx", ".xlsm"}:
+            names.add(p.name)
+        else:
+            stem = p.stem or str(p).strip()
+            for ext in (".xlsm", ".xlsx", ".xls"):
+                names.add(f"{stem}{ext}")
+
+    search_dirs = [
+        workspace / "Input" / "Existing_MPDT",
+        workspace / "Input" / "MPDT",
+        workspace / "Input",
+        workspace / "Output" / "PW_DownloadCache",
+    ]
+    for folder in search_dirs:
+        for name in names:
+            direct_candidates.append(folder / name)
+
+    seen: set[str] = set()
+    for candidate in direct_candidates:
+        try:
+            resolved = candidate.resolve()
+        except Exception:
+            resolved = candidate
+        key = str(resolved).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        if resolved.is_file():
+            return resolved
     return None
 
 
@@ -998,8 +1013,8 @@ def _download_existing_mpdt_from_projectwise(
     ]
 
     try:
-        # Keep interactive terminal behavior for PW password prompt.
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        # Keep PW download bounded; credentials should be supplied non-interactively.
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=int(pw_cfg.get("download_timeout_seconds", 120)))
         if proc.returncode != 0:
             logger.warning("  PW download failed for '%s': %s", document_name, (proc.stderr or proc.stdout)[-1200:])
             return None
@@ -1042,8 +1057,7 @@ def _extract_sw_model_part_id_from_existing_mpdt(
         return ""
 
     mpdt_path = _resolve_existing_mpdt_path(workspace, pw_row)
-    if mpdt_path is None:
-        # Required behavior: download latest existing MPDT from ProjectWise, then read value.
+    if mpdt_path is None and bool(cfg.get("pw", {}).get("download_existing_mpdt", False)):
         doc_name = str(pw_row.get("DocumentName", "")).strip() or str(pw_row.get("FileName", "")).strip()
         mpdt_path = _download_existing_mpdt_from_projectwise(workspace, cfg, doc_name, logger)
     if mpdt_path is None:
@@ -1717,8 +1731,35 @@ def generate_single_mpdt(
         deliverable_name = f"MPDT_{uaid2}"
 
     model_container_id = ""
+    asset_name_for_dm3 = ""
+    for _expr in ("join1[AssetName]", "join1[AssetName_2]", "join1[Asset Name]", "join2[AssetName_2]"):
+        try:
+            _val = get_mapped_value(_expr, join2_row, join1_row, deliverable_name)
+        except Exception:
+            _val = None
+        if not _is_empty(_val):
+            asset_name_for_dm3 = str(_val).strip()
+            break
+    if not asset_name_for_dm3 and _l2_row is not None:
+        for _col in _l2_row.index:
+            if normalize_text(_col) in ("level 2 asset name", "asset name", "assetname"):
+                _val = _l2_row.get(_col)
+                if not _is_empty(_val):
+                    asset_name_for_dm3 = str(_val).strip()
+                    break
+
+    dm3_resolver = indexes.get("dm3_model_container_resolver") if indexes else None
+    if dm3_resolver is not None:
+        try:
+            model_container_id = dm3_resolver.resolve(deliverable_name, asset_name_for_dm3)
+            if model_container_id:
+                logger.info("  Model Container ID resolved from All_Current_DM3_files for %s: %s", uaid2, model_container_id)
+        except Exception as exc:
+            logger.warning("  Could not resolve Model Container ID from All_Current_DM3_files for %s: %s", uaid2, exc)
+            model_container_id = ""
+
     resolver = indexes.get("model_container_resolver") if indexes else None
-    if resolver is not None:
+    if not model_container_id and resolver is not None:
         try:
             model_container_id = resolver.resolve(uaid2, getattr(resolver, "discipline_from_deliverable", lambda x: "")(deliverable_name))
             if model_container_id:
@@ -1932,6 +1973,7 @@ def generate_mpdt_batch(
     control_df = sources.get("control_df", pd.DataFrame())
     pw_df = sources.get("pw_df", pd.DataFrame())
     midp_df = sources.get("midp_df", pd.DataFrame())
+    dm3_df = sources.get("dm3_df", pd.DataFrame())
     l2_df = sources.get("l2_df", None)
 
     if not columns:
@@ -1970,9 +2012,11 @@ def generate_mpdt_batch(
     all_lodm_att_norms: set[str] = lodm_indexes.get("all_lodm_att_norms", set())
 
     model_container_resolver = build_model_container_resolver(midp_df, pw_df, logger)
+    dm3_model_container_resolver = build_all_current_dm3_resolver(dm3_df, logger)
 
     indexes = {
         "model_container_resolver": model_container_resolver,
+        "dm3_model_container_resolver": dm3_model_container_resolver,
         "scope2_by_uaid2": _first_row_by_upper_key(scope2, uaid2_col_s2),
         "sf_l2_by_uaid2": _first_row_by_upper_key(sf_l2, uaid2_col_sf2),
         "scope3_by_uaid2": _group_df_by_upper_key(scope3, uaid2_col_s3),

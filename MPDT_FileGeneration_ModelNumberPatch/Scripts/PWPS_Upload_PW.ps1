@@ -203,6 +203,13 @@ public static class Kernel32 {
     }
 }
 
+try {
+    Test-PWNativeRuntime -ProjectWiseBin $ProjectWiseBin
+} catch {
+    Write-Error "ProjectWise native runtime check failed: $_"
+    exit 1
+}
+
 # ---------------------------------------------------------------------------
 # Import module
 # ---------------------------------------------------------------------------
@@ -226,13 +233,6 @@ try {
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-
-try {
-    Test-PWNativeRuntime -ProjectWiseBin $ProjectWiseBin
-} catch {
-    Write-Error "ProjectWise native runtime check failed: $_"
-    exit 1
-}
 
 # ---------------------------------------------------------------------------
 # Connect
@@ -283,8 +283,14 @@ try {
     # Check if document already exists (update) or create new
     $ExistingDoc = $null
     try {
-        # Use a wildcard search to increase chance of matching existing document names
-        $basename = [System.IO.Path]::GetFileNameWithoutExtension($FileName)
+        # Use the intended ProjectWise document name for matching. The local
+        # staged file name can include an extension/suffix that is not part of
+        # the PW document name, especially for ACBOS files.
+        $basename = if ([string]::IsNullOrWhiteSpace($docNameToUse)) {
+            [System.IO.Path]::GetFileNameWithoutExtension($FileName)
+        } else {
+            [System.IO.Path]::GetFileNameWithoutExtension($docNameToUse)
+        }
         $searchName = "*${basename}*"
         if ($NormalizedFolderPath) {
             $ExistingDoc = Get-PWDocumentsBySearch -DocumentName $searchName -FolderPath $NormalizedFolderPath |

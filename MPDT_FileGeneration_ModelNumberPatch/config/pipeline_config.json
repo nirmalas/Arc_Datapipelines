@@ -1,196 +1,199 @@
 {
-    "output_directory":  "Output",
-    "log_level":  "INFO",
-    "batch_size":  5,
-    "target_uaid2":  ["HS2-00002TG2C"
-                     ],
-    "file_type":  "AUTO",
-    "missing_in_pw_file_type":  "ACBOS",
-    "fetch_external":  {
-                           "db":  false,
-                           "smartforms":  false,
-                           "pw_extract":  false,
-                           "_note":  "db=true: query L3 SQL Server, overwrite Input/l3_assets_scope_data.xlsx. smartforms=true: fetch via API, overwrite Input/SmartForms_RAW_MPDT_L2\u0026L3.xlsx. pw_extract=true: run Scripts/PWPS_Data_Extract.ps1, overwrite Input/ACBOS_MPDT.xlsx. Steps 2+ always read from these Input/ files regardless of these flags."
-                       },
-    "input_location":  {
-                           "enabled":  true,
-                           "type":  "sharepoint",
-                           "_note":  "Use type=sharepoint or type=blob to sync configured Input files before each run. Remote paths default to paths.* under base_path unless overridden in items.",
-                           "base_path":  "/teams/HS2ASC-RW/PMO/13 - IM - Information Management/42 - Digital Debt/05 - Level 3 Asset/Operations/Automated JSON/AutoCreate_MPDT_ACBOS/Input",
-                           "fail_on_missing":  true,
-                           "items":  [
-                                         {
-                                             "path_key":  "pw_extract"
-                                         },
-                                         {
-                                             "path_key":  "pw_extract_full"
-                                         },
-                                         {
-                                             "path_key":  "matchup_file"
-                                         },
-                                         {
-                                             "path_key":  "l3_assets_scope_data"
-                                         },
-                                         {
-                                             "path_key":  "l2_uaid_acbos"
-                                         },
-                                         {
-                                             "path_key":  "lodm"
-                                         },
-                                         {
-                                             "path_key":  "control_file"
-                                         },
-                                         {
-                                             "path_key":  "mpdt_template"
-                                         },
-                                         {
-                                             "path_key":  "sample_mpdt"
-                                         },
-                                         {
-                                             "path_key":  "smartforms_fallback"
-                                         },
-                                         {
-                                             "path_key":  "acbos_template_dir",
-                                             "type":  "prefix"
-                                         },
-                                         {
-                                             "path_key":  "tracker_sep2025"
-                                         },
-                                         {
-                                             "path_key":  "tracker_2025"
-                                         },
-                                         {
-                                             "path_key":  "tracker_2024"
-                                         },
-                                         {
-                                             "path_key":  "midp_navigator"
-                                         },
-                                         {
-                                             "path_key":  "pw_extract_full_columns"
-                                         }
-                                     ],
-                           "sharepoint":  {
-                                              "site_url":  "https://arcadiso365.sharepoint.com/teams/HS2ASC-RW",
-                                              "client_id_env": "SHAREPOINT_CLIENT_ID",
-                                              "client_secret_env": "SHAREPOINT_CLIENT_SECRET",
-                                                //   "client_id_env":  "9ed58161-94b2-4a2a-8a46-1681c7825509",
-                                                //   "client_secret_env":  "5dKamqiVm5ngCB7bUhTEjAGpuvwiasdDDx9Uj0yTdT0=",
-                                              "username_env":  "SHAREPOINT_USERNAME",
-                                              "password_env":  "SHAREPOINT_PASSWORD"
-                                          },
-                           "blob":  {
-                                        "credential":  "sas_token",
-                                        "account_url":  "https://sahs2prd001.blob.core.windows.net",
-                                        "account_name":  "",
-                                        "container":  "hs2-mpdt-acbos",
-                                        "sas_token_env":  "BLOB_SERVICE_SAS",
-                                        "connection_string_env":  "MPDT_BLOB_CONNECTION_STRING",
-                                        "managed_identity_client_id":  ""
-                                    }
-                       },
-    "output_location":  {
-                            "enabled":  true,
-                            "type":  "sharepoint",
-                            "_note":  "Use type=sharepoint or type=blob to upload generated Output files after a successful run.",
-                            "base_path":  "/teams/HS2ASC-RW/PMO/13 - IM - Information Management/42 - Digital Debt/05 - Level 3 Asset/Operations/Automated JSON/AutoCreate_MPDT_ACBOS/Output",
-                            "include_patterns":  [
-                                                     "*.xlsx",
-                                                     "*.xlsm",
-                                                     "*.xls",
-                                                     "*.csv",
-                                                     "*.json",
-                                                     "*.ACBOS"
-                                                 ],
-                            "sharepoint":  {
-                                               "site_url":  "https://arcadiso365.sharepoint.com/teams/HS2ASC-RW",
-                                               "client_id_env":  "SHAREPOINT_CLIENT_ID",
-                                               "client_secret_env":  "SHAREPOINT_CLIENT_SECRET",
-                                               "username_env":  "SHAREPOINT_USERNAME",
-                                               "password_env":  "SHAREPOINT_PASSWORD"
-                                           },
-                            "blob":  {
-                                         "credential":  "sas_token",
-                                         "account_url":  "",
-                                         "account_name":  "",
-                                         "container":  "",
-                                         "sas_token_env":  "BLOB_SERVICE_SAS",
-                                         "connection_string_env":  "MPDT_BLOB_CONNECTION_STRING",
-                                         "managed_identity_client_id":  ""
-                                     },
-                            "extra_paths":  [
-                                                "Output",
-                                                "output_pw_*"
-                                            ]
-                        },
-    "allow_scope3_fallback_when_pw_missing":  true,
-    "uaid_type_map":  {
-
-                      },
-    "not_in_pw_type_map":  {
-
-                           },
-    "fallback_asset_type_map":  [
-
-                                ],
-    "db":  {
-               "connection_string":  "Driver={ODBC Driver 17 for SQL Server};Server=\u003cserver\u003e;Database=HS2_L3Database;UID=hs2admin;PWD=KU%[%NM{Y50!Q*1o_}lD#\u003cV[;",
-               "_note":  "Replace \u003cserver\u003e above with your actual SQL Server hostname, e.g. hs2-db-prd.database.windows.net,1433",
-               "tables":  [
-                              "AssetsScope2",
-                              "AssetsScope3"
-                          ]
-           },
-    "smartforms_api":  {
-                           "enabled":  false,
-                           "tenant_id":  "7f90057d-3ea0-46fe-b07c-e0568627081b",
-                           "client_id":  "",
-                           "scope":  "https://api.bentley.com/.default",
-                           "base_url":  "https://api.bentley.com/assetregistry"
-                       },
-    "pw":  {
-               "datasource":  "arcadis-uk-pw.bentley.com:arcadis-uk-07",
-               "username":  "_asc_user_automation",
-               "ps1_download":  "Scripts/PWPS_Download_MPDT.ps1",
-               "ps1_extract":  "Scripts/PWPS_Data_Extract.ps1",
-               "ps1_upload":  "Scripts/PWPS_Upload_PW.ps1",
-               "generate_upload_metadata":  true,
-               "upload_metadata_filename":  "PW_Upload_Metadata.xlsx",
-               "default_folder":  "",
-               "upload_metadata_columns":  [
-                                               "DocumentName",
-                                               "Version",
-                                               "FileName",
-                                               "FileType",
-                                               "ASSET_ID",
-                                               "UAID_2",
-                                               "PWFolderPath",
-                                               "LocalFilePath"
-                                           ]
-           },
-    "paths":  {
-                  "pw_extract":  "Input/ACBOS_MPDT.xlsx",
-                  "matchup_file":  "",
-                  "target_uaid2_file":  "",
-                  "pw_extract_full":  "Input/ACBOS_MPDT_FULL.xlsx",
-                  "l3_assets_scope_data":  "Input/l3_assets_scope_data.xlsx",
-                  "join_results":  "Input/join_results.xlsx",
-                  "l2_uaid_acbos":  "Input/L2 UAID-ACBOS_260129.xlsx",
-                  "lodm":  "Input/1MC06-ASC-IM-SCH-C002-000009_lodm.xlsx",
-                  "control_file":  "Input/1MC06-ASC-IM-GDE-C002-000090_controlfile.xlsx",
-                  "mpdt_template":  "Input/C2-MPDT-Template-Mapping.xlsm",
-                  "sample_mpdt":  "Input/1MC07-CEK-BR-FRM-CS07_CL26-000005.xlsm",
-                  "smartforms_fallback":  "Input/SmartForms_RAW_MPDT_L2\u0026L3.xlsx",
-                  "acbos_template_dir":  "Input/ACBOS_Templates",
-                  "tracker_sep2025":  "Input/JSON Works Tracker_Sep 2025 Onwards .xlsx",
-                  "tracker_2025":  "Input/JSON Works Tracker 2025.xlsx",
-                  "tracker_2024":  "Input/JSON Works Tracker 2024.xlsx",
-                  "db_cache_dir":  "Input/DB_Cache",
-                  "midp_navigator":  "Input/MIDP_Navigator.xlsx",
-                  "acbos_template_file":  "Input/ACBOS_Templates/C23-ASC-MASTER-L3V4_TLC5-ACBOS.ACBOS",
-                  "pw_extract_full_columns":  "Input/ACBOS MPDT_FULLColumns.xlsx"
-              },
-    "tracker_sheet_name":  "Central_Team",
-    "publish":  false,
-    "check_version":  true,
-    "max_log_files":  10
+    "output_directory": "Output",
+    "log_level": "INFO",
+    "batch_size": 5,
+    "target_uaid2": [
+        "HS2-00002CT5W",
+        "HS2-00002CT5X",
+        "HS2-00002CT38",
+        "HS2-00002CTE4",
+        "HS2-00003HF3W"
+    ],
+    "file_type": "AUTO",
+    "missing_in_pw_file_type": "ACBOS",
+    "fetch_external": {
+        "db": false,
+        "smartforms": false,
+        "pw_extract": false,
+        "_note": "db=true: query L3 SQL Server, overwrite Input/l3_assets_scope_data.xlsx. smartforms=true: fetch via API, overwrite Input/SmartForms_RAW_MPDT_L2&L3.xlsx. pw_extract=true: run Scripts/PWPS_Data_Extract.ps1, overwrite Input/ACBOS_MPDT.xlsx. Steps 2+ always read from these Input/ files regardless of these flags."
+    },
+    "input_location": {
+        "enabled": true,
+        "type": "sharepoint",
+        "_note": "Use type=sharepoint or type=blob to sync configured Input files before each run. Remote paths default to paths.* under base_path unless overridden in items.",
+        "base_path": "/teams/HS2ASC-RW/PMO/13 - IM - Information Management/42 - Digital Debt/05 - Level 3 Asset/Operations/Automated JSON/AutoCreate_MPDT_ACBOS/Input",
+        "fail_on_missing": true,
+        "items": [
+            {
+                "path_key": "pw_extract"
+            },
+            {
+                "path_key": "pw_extract_full"
+            },
+            {
+                "path_key": "matchup_file"
+            },
+            {
+                "path_key": "l3_assets_scope_data"
+            },
+            {
+                "path_key": "l2_uaid_acbos"
+            },
+            {
+                "path_key": "lodm"
+            },
+            {
+                "path_key": "control_file"
+            },
+            {
+                "path_key": "mpdt_template"
+            },
+            {
+                "path_key": "sample_mpdt"
+            },
+            {
+                "path_key": "smartforms_fallback"
+            },
+            {
+                "path_key": "acbos_template_dir",
+                "type": "prefix"
+            },
+            {
+                "path_key": "tracker_sep2025"
+            },
+            {
+                "path_key": "tracker_2025"
+            },
+            {
+                "path_key": "tracker_2024"
+            },
+            {
+                "path_key": "midp_navigator"
+            },
+            {
+                "path_key": "all_current_dm3_files"
+            },
+            {
+                "path_key": "pw_extract_full_columns"
+            }
+        ],
+        "sharepoint": {
+            "site_url": "https://arcadiso365.sharepoint.com/teams/HS2ASC-RW",
+            "client_id_env": "SHAREPOINT_CLIENT_ID",
+            "client_secret_env": "SHAREPOINT_CLIENT_SECRET",
+            "username_env": "SHAREPOINT_USERNAME",
+            "password_env": "SHAREPOINT_PASSWORD"
+        },
+        "blob": {
+            "credential": "sas_token",
+            "account_url": "https://sahs2prd001.blob.core.windows.net",
+            "account_name": "",
+            "container": "hs2-mpdt-acbos",
+            "sas_token_env": "BLOB_SERVICE_SAS",
+            "connection_string_env": "MPDT_BLOB_CONNECTION_STRING",
+            "managed_identity_client_id": ""
+        }
+    },
+    "output_location": {
+        "enabled": true,
+        "type": "sharepoint",
+        "_note": "Use type=sharepoint or type=blob to upload generated Output files after a successful run.",
+        "base_path": "/teams/HS2ASC-RW/PMO/13 - IM - Information Management/42 - Digital Debt/05 - Level 3 Asset/Operations/Automated JSON/AutoCreate_MPDT_ACBOS/Output",
+        "include_patterns": [
+            "*.xlsx",
+            "*.xlsm",
+            "*.xls",
+            "*.csv",
+            "*.json",
+            "*.ACBOS"
+        ],
+        "sharepoint": {
+            "site_url": "https://arcadiso365.sharepoint.com/teams/HS2ASC-RW",
+            "client_id_env": "SHAREPOINT_CLIENT_ID",
+            "client_secret_env": "SHAREPOINT_CLIENT_SECRET",
+            "username_env": "SHAREPOINT_USERNAME",
+            "password_env": "SHAREPOINT_PASSWORD"
+        },
+        "blob": {
+            "credential": "sas_token",
+            "account_url": "",
+            "account_name": "",
+            "container": "",
+            "sas_token_env": "BLOB_SERVICE_SAS",
+            "connection_string_env": "MPDT_BLOB_CONNECTION_STRING",
+            "managed_identity_client_id": ""
+        },
+        "extra_paths": [
+            "Output",
+            "output_pw_*"
+        ]
+    },
+    "allow_scope3_fallback_when_pw_missing": true,
+    "uaid_type_map": {},
+    "not_in_pw_type_map": {},
+    "fallback_asset_type_map": [],
+    "db": {
+        "connection_string": "Driver={ODBC Driver 17 for SQL Server};Server=<server>;Database=HS2_L3Database;UID=hs2admin;PWD=KU%[%NM{Y50!Q*1o_}lD#<V[;",
+        "_note": "Replace <server> above with your actual SQL Server hostname, e.g. hs2-db-prd.database.windows.net,1433",
+        "tables": [
+            "AssetsScope2",
+            "AssetsScope3"
+        ]
+    },
+    "smartforms_api": {
+        "enabled": false,
+        "tenant_id": "7f90057d-3ea0-46fe-b07c-e0568627081b",
+        "client_id": "",
+        "scope": "https://api.bentley.com/.default",
+        "base_url": "https://api.bentley.com/assetregistry"
+    },
+    "pw": {
+        "datasource": "arcadis-uk-pw.bentley.com:arcadis-uk-07",
+        "username": "_asc_user_automation",
+        "ps1_download": "Scripts/PWPS_Download_MPDT.ps1",
+        "ps1_extract": "Scripts/PWPS_Data_Extract.ps1",
+        "ps1_upload": "Scripts/PWPS_Upload_PW.ps1",
+        "generate_upload_metadata": true,
+        "upload_metadata_filename": "PW_Upload_Metadata.xlsx",
+        "default_folder": "",
+        "upload_metadata_columns": [
+            "DocumentName",
+            "Version",
+            "FileName",
+            "FileType",
+            "ASSET_ID",
+            "UAID_2",
+            "PWFolderPath",
+            "LocalFilePath"
+        ],
+        "download_existing_mpdt": false,
+        "download_timeout_seconds": 120
+    },
+    "paths": {
+        "pw_extract": "Input/ACBOS_MPDT.xlsx",
+        "matchup_file": "",
+        "target_uaid2_file": "",
+        "pw_extract_full": "Input/ACBOS_MPDT_FULL.xlsx",
+        "l3_assets_scope_data": "Input/l3_assets_scope_data.xlsx",
+        "join_results": "Input/join_results.xlsx",
+        "l2_uaid_acbos": "Input/L2 UAID-ACBOS_260129.xlsx",
+        "lodm": "Input/1MC06-ASC-IM-SCH-C002-000009_lodm.xlsx",
+        "control_file": "Input/1MC06-ASC-IM-GDE-C002-000090_controlfile.xlsx",
+        "mpdt_template": "Input/C2-MPDT-Template-Mapping.xlsm",
+        "sample_mpdt": "Input/1MC07-CEK-BR-FRM-CS07_CL26-000005.xlsm",
+        "smartforms_fallback": "Input/SmartForms_RAW_MPDT_L2&L3.xlsx",
+        "acbos_template_dir": "Input/ACBOS_Templates",
+        "tracker_sep2025": "Input/JSON Works Tracker_Sep 2025 Onwards .xlsx",
+        "tracker_2025": "Input/JSON Works Tracker 2025.xlsx",
+        "tracker_2024": "Input/JSON Works Tracker 2024.xlsx",
+        "db_cache_dir": "Input/DB_Cache",
+        "midp_navigator": "Input/MIDP_Navigator.xlsx",
+        "acbos_template_file": "Input/ACBOS_Templates/C23-ASC-MASTER-L3V4_TLC5-ACBOS.ACBOS",
+        "pw_extract_full_columns": "Input/ACBOS MPDT_FULLColumns.xlsx",
+        "all_current_dm3_files": "Input/All_Current_DM3_files.xlsx"
+    },
+    "tracker_sheet_name": "Central_Team",
+    "publish": false,
+    "check_version": true,
+    "max_log_files": 10
 }

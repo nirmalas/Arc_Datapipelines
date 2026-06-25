@@ -285,5 +285,164 @@ class ModelContainerResolver:
                 seen.add(key)
         return vals[0] if len(vals) == 1 else ""
 
+
+class AllCurrentDM3Resolver:
+    """Resolve Model Container IDs from All_Current_DM3_files.xlsx.
+
+    This file is a ProjectWise-style DM3 extract and normally does not carry
+    UAID values.  Matching is therefore based on the MPDT deliverable context:
+    project, discipline, and spatial CS/CL token from the filename.
+    """
+
+    def __init__(self, dm3_df: pd.DataFrame | None, logger: logging.Logger | None = None):
+        self.logger = logger
+        self.dm3_df = dm3_df.copy() if dm3_df is not None and not dm3_df.empty else pd.DataFrame()
+        self.name_col = _pick_column(self.dm3_df, ("Name", "Doc. Reference", "DocumentName", "Document Name", "Deliverable No", "Deliverable Number")) if not self.dm3_df.empty else None
+        self.file_col = _pick_column(self.dm3_df, ("File Name", "FileName")) if not self.dm3_df.empty else None
+        self.description_col = _pick_column(self.dm3_df, ("Description", "Title", "Folder Description")) if not self.dm3_df.empty else None
+        self.updated_col = _pick_column(self.dm3_df, ("File Updated", "Updated", "Created")) if not self.dm3_df.empty else None
+
+        if not self.dm3_df.empty and not (self.name_col or self.file_col):
+            if self.logger:
+                self.logger.warning(
+                    "All Current DM3 file loaded but no Name/File Name column was found. "
+                    "Model Container ID will fall back to MIDP resolver."
+                )
+        if not self.dm3_df.empty and (self.name_col or self.file_col):
+            self._prepare_lookup_columns()
+
+    @staticmethod
+    def _stem(value: Any) -> str:
+        if _is_empty(value):
+            return ""
+        return Path(str(value).strip()).stem.upper()
+
+    @staticmethod
+    def _parts(value: Any) -> list[str]:
+        stem = AllCurrentDM3Resolver._stem(value)
+        return [p.strip().upper() for p in stem.split("-") if p.strip()]
+
+    @staticmethod
+    def _context(deliverable_name: str | None) -> dict[str, str]:
+        parts = AllCurrentDM3Resolver._parts(deliverable_name)
+        return {
+            "project": parts[0] if len(parts) > 0 else "",
+            "originator": parts[1] if len(parts) > 1 else "",
+            "discipline": parts[2][:2] if len(parts) > 2 else "",
+            "spatial": parts[4] if len(parts) > 4 else "",
+        }
+
+    def _row_stem(self, row: pd.Series) -> str:
+        for col in (self.name_col, self.file_col):
+            if col and not _is_empty(row.get(col)):
+                return self._stem(row.get(col))
+        return ""
+
+    def _prepare_lookup_columns(self) -> None:
+        def row_stem(row: pd.Series) -> str:
+            return self._row_stem(row)
+
+        self.dm3_df["_dm3_stem"] = self.dm3_df.apply(row_stem, axis=1)
+        parts = self.dm3_df["_dm3_stem"].map(self._parts)
+        self.dm3_df["_dm3_project"] = parts.map(lambda p: p[0] if len(p) > 0 else "")
+        self.dm3_df["_dm3_discipline"] = parts.map(lambda p: p[2][:2] if len(p) > 2 else "")
+        self.dm3_df["_dm3_spatial"] = parts.map(lambda p: p[4] if len(p) > 4 else "")
+        self.dm3_df["_dm3_is_dm3"] = parts.map(lambda p: "DM3" in p)
+
+    def _candidate_rows(self, deliverable_name: str | None) -> pd.DataFrame:
+        if self.dm3_df.empty or not (self.name_col or self.file_col):
+            return pd.DataFrame()
+        ctx = self._context(deliverable_name)
+        if not ctx["project"] or not ctx["discipline"] or not ctx["spatial"]:
+            return pd.DataFrame()
+
+        required_cols = {"_dm3_is_dm3", "_dm3_project", "_dm3_discipline", "_dm3_spatial"}
+        if not required_cols.issubset(self.dm3_df.columns):
+            self._prepare_lookup_columns()
+        mask = (
+            self.dm3_df["_dm3_is_dm3"]
+            & (self.dm3_df["_dm3_project"] == ctx["project"])
+            & (self.dm3_df["_dm3_discipline"] == ctx["discipline"])
+            & (self.dm3_df["_dm3_spatial"] == ctx["spatial"])
+        )
+        return self.dm3_df[mask].copy()
+
+    def _unique_name(self, df: pd.DataFrame) -> str:
+        if df is None or df.empty:
+            return ""
+        vals: list[str] = []
+        seen: set[str] = set()
+        for _, row in df.iterrows():
+            stem = self._row_stem(row)
+            if not stem:
+                continue
+            key = stem.upper()
+            if key not in seen:
+                vals.append(stem)
+                seen.add(key)
+        return vals[0] if len(vals) == 1 else ""
+
+    @staticmethod
+    def _match_tokens(value: Any) -> list[str]:
+        if _is_empty(value):
+            return []
+        stop_words = {
+            "asset", "assets", "line", "model", "models", "civil", "native",
+            "and", "the", "for", "with", "from", "into", "level", "scope",
+        }
+        tokens = [t.lower() for t in re.split(r"[^A-Za-z0-9]+", str(value)) if len(t) >= 3]
+        return [t for t in tokens if t not in stop_words]
+
+    def _filter_by_asset_name(self, df: pd.DataFrame, asset_name: str | None) -> pd.DataFrame:
+        if df is None or df.empty or not self.description_col or _is_empty(asset_name):
+            return df
+        tokens = self._match_tokens(asset_name)
+        if not tokens:
+            return df
+        desc = df[self.description_col].fillna("").astype(str).str.lower()
+        mask = pd.Series(True, index=df.index)
+        for token in tokens:
+            mask = mask & desc.str.contains(re.escape(token), na=False)
+        filtered = df[mask]
+        return filtered if not filtered.empty else df
+
+    def _prefer_active_non_native(self, df: pd.DataFrame) -> pd.DataFrame:
+        if df is None or df.empty or not self.description_col:
+            return df
+        desc = df[self.description_col].fillna("").astype(str).str.lower()
+        active = df[~desc.str.contains("withdrawn|not in use", case=False, na=False)]
+        if not active.empty:
+            df = active
+            desc = df[self.description_col].fillna("").astype(str).str.lower()
+        non_native = df[~desc.str.contains("civil 3d native", case=False, na=False)]
+        return non_native if not non_native.empty else df
+
+    def resolve(self, deliverable_name: str | None, asset_name: str | None = None) -> str:
+        """Return a unique DM3 container ID for the MPDT deliverable, or blank."""
+        candidates = self._candidate_rows(deliverable_name)
+        candidates = self._filter_by_asset_name(candidates, asset_name)
+
+        one = self._unique_name(candidates)
+        if one:
+            return one
+
+        if not candidates.empty and self.description_col:
+            desc = candidates[self.description_col].fillna("").astype(str)
+            solid = candidates[desc.str.contains("solid", case=False, na=False)]
+            one = self._unique_name(solid)
+            if one:
+                return one
+
+            preferred = self._prefer_active_non_native(candidates)
+            one = self._unique_name(preferred)
+            if one:
+                return one
+
+        return ""
+
+
+def build_all_current_dm3_resolver(dm3_df: pd.DataFrame | None, logger: logging.Logger | None = None) -> AllCurrentDM3Resolver:
+    return AllCurrentDM3Resolver(dm3_df, logger)
+
 def build_model_container_resolver(midp_df: pd.DataFrame | None, pw_df: pd.DataFrame | None, logger: logging.Logger | None = None) -> ModelContainerResolver:
     return ModelContainerResolver(midp_df, pw_df, logger)

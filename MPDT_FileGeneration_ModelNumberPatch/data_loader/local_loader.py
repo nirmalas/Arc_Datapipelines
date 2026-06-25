@@ -132,25 +132,35 @@ def _normalise_l3_source_values(df: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 def load_pw_extract(workspace: Path, cfg: dict, logger: logging.Logger) -> pd.DataFrame:
-    """Load ProjectWise extract (ACBOS MPDT.xlsx or FULL variant)."""
+    """Load ProjectWise extract, preferring the full-columns source of truth."""
     paths = cfg.get("paths", {})
-    # Prefer source input extract files first so step2/step3 use the same source of truth.
-    for key in ("pw_extract", "pw_extract_full"):
-        rel = paths.get(key, "")
+    # Priority: full-columns PW extract first, then older configured extracts,
+    # then the cached extract as a last resort.
+    candidates = [
+        ("pw_extract_full_columns", paths.get("pw_extract_full_columns", "")),
+        ("pw_extract_full_columns_default", "Input/ACBOS MPDT_FULLColumns.xlsx"),
+        ("pw_extract_full", paths.get("pw_extract_full", "")),
+        ("pw_extract", paths.get("pw_extract", "")),
+    ]
+    seen: set[str] = set()
+    for key, rel in candidates:
         if not rel:
             continue
         path = (workspace / rel).resolve()
+        path_key = str(path).lower()
+        if path_key in seen:
+            continue
+        seen.add(path_key)
         if path.exists():
             try:
                 cache_dir = workspace / paths.get("db_cache_dir", "Input/DB_Cache")
                 df = _read_excel_with_cache(path, cache_dir, f"excel_{path.stem}", logger, dtype=str, engine="openpyxl")
-                logger.info("PW extract loaded from '%s': %d rows", path.name, len(df))
+                logger.info("PW extract loaded from '%s' (%s): %d rows", path.name, key, len(df))
                 return df
             except PermissionError:
                 logger.warning("PW extract '%s' is locked; trying fallback source...", path.name)
             except Exception as exc:
                 logger.warning("Could not read PW extract '%s': %s", path.name, exc)
-
     cache_base = workspace / paths.get("db_cache_dir", "Input/DB_Cache") / "PW_Extract"
     cached = read_table_any(cache_base, logger)
     if not cached.empty:
@@ -571,6 +581,24 @@ def load_midp_navigator(workspace: Path, cfg: dict, logger: logging.Logger) -> p
         return pd.DataFrame()
 
 
+def load_all_current_dm3_files(workspace: Path, cfg: dict, logger: logging.Logger) -> pd.DataFrame:
+    """Load All_Current_DM3_files.xlsx for a first-pass MPDT Model Container lookup."""
+    rel = cfg.get("paths", {}).get("all_current_dm3_files", "Input/All_Current_DM3_files.xlsx")
+    path = (workspace / rel).resolve()
+    if not path.exists():
+        logger.warning("All Current DM3 files input not found: %s", path)
+        return pd.DataFrame()
+
+    cache_dir = workspace / cfg.get("paths", {}).get("db_cache_dir", "Input/DB_Cache")
+    try:
+        df = _read_excel_with_cache(path, cache_dir, f"excel_{path.stem}", logger, dtype=str, engine="openpyxl")
+        logger.info("All Current DM3 files loaded: %d rows", len(df))
+        return df
+    except Exception as exc:
+        logger.warning("Could not load All Current DM3 files '%s': %s", path, exc)
+        return pd.DataFrame()
+
+
 # ---------------------------------------------------------------------------
 # All-in-one loader (used by main pipeline)
 # ---------------------------------------------------------------------------
@@ -595,6 +623,7 @@ def load_all_sources(workspace: Path, cfg: dict, logger: logging.Logger, target_
     control_df = load_control_file(workspace, cfg, logger)
     mapping_dict = load_mpdt_mapping(workspace, cfg, logger)
     midp_df = load_midp_navigator(workspace, cfg, logger)
+    dm3_df = load_all_current_dm3_files(workspace, cfg, logger)
     mpdt_columns = load_sample_mpdt_columns(workspace, cfg, logger)
     mpdt_row1_codes = load_sample_mpdt_row1_codes(workspace, cfg, logger)
 
@@ -614,6 +643,7 @@ def load_all_sources(workspace: Path, cfg: dict, logger: logging.Logger, target_
         "control_df": control_df,
         "mapping_dict": mapping_dict,
         "midp_df": midp_df,
+        "dm3_df": dm3_df,
         "mpdt_columns": mpdt_columns,
         "row1_codes": mpdt_row1_codes,
         "pw_id_col": pw_id_col,

@@ -150,159 +150,128 @@ def find_pw_best(
     acbos_doc: str | None,
     logger: logging.Logger,
 ) -> dict | None:
-    """
-        Find the latest PW document for a UAID by strict ID lookup only. Uses:
-            1. PW_UAID direct match
-            2. ASSET_ID direct match
-            3. UAID_2 direct match
-    Returns dict with pw_type, filename, filepath, version, file_date or None.
+    """Find the controlling PW document for a UAID.
+
+    Candidate rows come from direct UAID matches plus the ACBOS document listed
+    in the L2 mapping.  The winning row is selected by TB_REV_DATE first, then
+    Version/Rev as a tie-breaker.  The winning file extension determines MPDT
+    versus ACBOS.
     """
     if pw_df.empty:
         return None
 
-    # Ensure FileName_lower exists
+    pw_df = pw_df.copy()
     if "FileName_lower" not in pw_df.columns:
-        pw_df = pw_df.copy()
-        pw_df["FileName_lower"] = pw_df["FileName"].fillna("").str.lower() if "FileName" in pw_df.columns else ""
+        pw_df["FileName_lower"] = pw_df["FileName"].fillna("").astype(str).str.lower() if "FileName" in pw_df.columns else ""
 
-    # Ensure FileUpdated is parsed
-    if "FileUpdated" in pw_df.columns and not pd.api.types.is_datetime64_any_dtype(pw_df["FileUpdated"]):
-        pw_df = pw_df.copy()
-        pw_df["FileUpdated"] = _parse_filedate(pw_df["FileUpdated"].astype(str))
+    def _add_candidates(frames: list[pd.DataFrame], hit: pd.DataFrame, method: str) -> None:
+        if hit is None or hit.empty:
+            return
+        tmp = hit.copy()
+        tmp["_match_method"] = method
+        frames.append(tmp)
 
-    # Requested matching priority for target file mapping:
-    # 1) ASSET_ID exact match
-    # 2) TB_LEVEL_2_ID list contains UAID_2
-    # 3) Description exact match (input description)
-    methods_used: list[str] = []
-    all_rows = pd.DataFrame()
+    def _stem(value: str) -> str:
+        return Path(str(value or "").strip()).stem.upper()
+
+    candidate_frames: list[pd.DataFrame] = []
     ukey = str(uaid).strip().upper()
 
     asset_id_col = _pick_col(pw_df, "ASSET_ID", "asset_id")
     if asset_id_col:
         hit = pw_df[pw_df[asset_id_col].fillna("").astype(str).str.strip().str.upper() == ukey]
-        if not hit.empty:
-            all_rows = hit.copy()
-            methods_used.append("asset_id")
+        _add_candidates(candidate_frames, hit, "asset_id")
 
-    if all_rows.empty:
-        tb_l2_col = _pick_col(pw_df, "TB_LEVEL_2_ID", "tb_level_2_id", "tb level 2 id", "ZZ_LBL_UAIDL2")
-        if tb_l2_col:
-            mask = pw_df[tb_l2_col].fillna("").astype(str).apply(
-                lambda v: ukey in {x.strip().upper() for x in _split_list_cell(v)}
-            )
-            hit = pw_df[mask]
-            if not hit.empty:
-                all_rows = hit.copy()
-                methods_used.append("tb_level_2_id")
+    tb_l2_col = _pick_col(pw_df, "TB_LEVEL_2_ID", "tb_level_2_id", "tb level 2 id", "ZZ_LBL_UAIDL2")
+    if tb_l2_col:
+        mask = pw_df[tb_l2_col].fillna("").astype(str).apply(
+            lambda v: ukey in {x.strip().upper() for x in _split_list_cell(v)}
+        )
+        _add_candidates(candidate_frames, pw_df[mask], "tb_level_2_id")
 
-    if all_rows.empty and input_description:
+    if input_description:
         desc_col = _pick_col(pw_df, "Description", "description")
         if desc_col:
             dkey = str(input_description).strip().upper()
             hit = pw_df[pw_df[desc_col].fillna("").astype(str).str.strip().str.upper() == dkey]
-            if not hit.empty:
-                all_rows = hit.copy()
-                methods_used.append("description_exact")
+            _add_candidates(candidate_frames, hit, "description_exact")
 
+    if acbos_doc:
+        doc_stem = _stem(acbos_doc)
+        doc_cols = [c for c in ("DocumentName", "FileName") if c in pw_df.columns]
+        if doc_stem and doc_cols:
+            mask = pd.Series(False, index=pw_df.index)
+            for col in doc_cols:
+                mask = mask | (pw_df[col].fillna("").astype(str).map(_stem) == doc_stem)
+            _add_candidates(candidate_frames, pw_df[mask], "l2_acbos_doc")
+
+    if not candidate_frames:
+        return None
+
+    all_rows = pd.concat(candidate_frames, ignore_index=True)
     if all_rows.empty:
         return None
 
-    all_rows = all_rows.drop_duplicates()
+    # Preserve the first match method for duplicate document/version rows.
+    dedupe_cols = [c for c in ("DocumentName", "FileName", "Version", "FullPath") if c in all_rows.columns]
+    all_rows = all_rows.drop_duplicates(subset=dedupe_cols or None, keep="first")
 
-    # Split by extension
     fn_col = "FileName_lower" if "FileName_lower" in all_rows.columns else None
     if fn_col is None:
         return None
 
-    acbos_mask = all_rows[fn_col].str.endswith(".acbos")
-    mpdt_mask = all_rows[fn_col].apply(lambda x: any(x.endswith(ext) for ext in (".xlsm", ".xls", ".xlsx")))
-
-    acbos_rows = all_rows[acbos_mask]
-    mpdt_rows = all_rows[mpdt_mask]
-
-    def _best_row(subset: pd.DataFrame):
-        if subset.empty:
-            return None, None
-        subset = subset.copy()
-        if "FileUpdated" in subset.columns:
-            subset["_date"] = pd.to_datetime(subset["FileUpdated"], errors="coerce")
-            row = subset.sort_values("_date", ascending=False).iloc[0]
-            return row, row["_date"]
-        return subset.iloc[0], None
-
-    acbos_best, acbos_date = _best_row(acbos_rows)
-    mpdt_best, mpdt_date = _best_row(mpdt_rows)
-
-    # Pick winner based on most recent date
-    if acbos_date is None and mpdt_date is None:
+    valid_mask = all_rows[fn_col].str.endswith(".acbos") | all_rows[fn_col].apply(
+        lambda x: any(str(x).endswith(ext) for ext in (".xlsm", ".xls", ".xlsx"))
+    )
+    all_rows = all_rows[valid_mask].copy()
+    if all_rows.empty:
         return None
-    if acbos_date is None:
-        winner, best = "MPDT", mpdt_best
-    elif mpdt_date is None:
-        winner, best = "ACBOS", acbos_best
-    elif pd.notna(acbos_date) and pd.notna(mpdt_date):
-        winner, best = ("ACBOS", acbos_best) if acbos_date >= mpdt_date else ("MPDT", mpdt_best)
+
+    if "TB_REV_DATE" in all_rows.columns:
+        all_rows["_sort_date"] = _parse_filedate(all_rows["TB_REV_DATE"].astype(str))
     else:
-        winner, best = ("ACBOS", acbos_best) if acbos_date is not None else ("MPDT", mpdt_best)
+        all_rows["_sort_date"] = pd.NaT
+    if "FileUpdated" in all_rows.columns:
+        all_rows["_file_updated_date"] = _parse_filedate(all_rows["FileUpdated"].astype(str))
+        all_rows["_sort_date"] = all_rows["_sort_date"].fillna(all_rows["_file_updated_date"])
+    else:
+        all_rows["_file_updated_date"] = pd.NaT
+
+    def _version_parts(value: object) -> tuple[int, int]:
+        text = str(value or "").upper().strip()
+        nums = re.findall(r"\d+", text)
+        major = int(nums[0]) if nums else -1
+        minor = int(nums[1]) if len(nums) > 1 else 0
+        return major, minor
+
+    versions = all_rows.get("Version", pd.Series([""] * len(all_rows))).map(_version_parts)
+    all_rows["_version_major"] = versions.map(lambda x: x[0])
+    all_rows["_version_minor"] = versions.map(lambda x: x[1])
+
+    all_rows = all_rows.sort_values(
+        ["_sort_date", "_version_major", "_version_minor"],
+        ascending=[False, False, False],
+        na_position="last",
+    )
+    best = all_rows.iloc[0]
+    filename_lower = str(best.get("FileName_lower", "")).lower()
+    winner = "ACBOS" if filename_lower.endswith(".acbos") else "MPDT"
+
+    acbos_count = int(all_rows[fn_col].str.endswith(".acbos").sum())
+    mpdt_count = int(all_rows[fn_col].apply(lambda x: any(str(x).endswith(ext) for ext in (".xlsm", ".xls", ".xlsx"))).sum())
+    methods_used = [m for m in all_rows.get("_match_method", pd.Series(dtype=str)).dropna().astype(str).unique().tolist() if m]
 
     return {
         "pw_type": winner,
-        "filename": str(best.get("FileName", "")).strip() if best is not None else "",
-        "filepath": str(best.get("FullPath", "")).strip() if best is not None else "",
-        "version": str(best.get("Version", "")).strip() if best is not None else "",
-        "file_date": str(best.get("FileUpdated", "")).strip() if best is not None else "",
-        "match_methods": methods_used,
-        "deliverable_mapped_by": methods_used[0] if methods_used else "",
-        "acbos_count": len(acbos_rows),
-        "mpdt_count": len(mpdt_rows),
-    }
-
-
-# ---------------------------------------------------------------------------
-# PW version lookup by document name (used when filename is known from matchup)
-# ---------------------------------------------------------------------------
-
-def find_pw_version_by_docname(
-    doc_name: str,
-    pw_df: pd.DataFrame,
-    logger: logging.Logger,
-) -> dict | None:
-    """Look up version / date info in the PW extract for a known document stem.
-
-    Matches rows where the FileName stem (without extension) equals *doc_name*
-    (case-insensitive).  Returns the most-recently-updated row's metadata, or
-    None if no match is found.  This is used when the matchup file already
-    tells us the document name so we only need version/revision data from PW.
-    """
-    if pw_df.empty or not doc_name:
-        return None
-
-    fn_col = _pick_col(pw_df, "FileName", "DocumentName", "filename", "document_name")
-    if not fn_col:
-        return None
-
-    doc_stem = Path(doc_name).stem.strip().upper()
-
-    mask = pw_df[fn_col].fillna("").astype(str).apply(
-        lambda v: Path(v).stem.strip().upper() == doc_stem
-    )
-    hits = pw_df[mask]
-    if hits.empty:
-        logger.debug("  find_pw_version_by_docname: no PW row for doc '%s'", doc_name)
-        return None
-
-    hits = hits.copy()
-    if "FileUpdated" in hits.columns:
-        hits["_date"] = _parse_filedate(hits["FileUpdated"].astype(str))
-        hits = hits.sort_values("_date", ascending=False)
-
-    best = hits.iloc[0]
-    return {
-        "filename": str(best.get(fn_col, "")).strip(),
+        "filename": str(best.get("FileName", "")).strip(),
         "filepath": str(best.get("FullPath", "")).strip(),
-        "version":  str(best.get("Version", "")).strip(),
+        "version": str(best.get("Version", "")).strip(),
         "file_date": str(best.get("FileUpdated", "")).strip(),
+        "rev_date": str(best.get("TB_REV_DATE", "")).strip(),
+        "match_methods": methods_used,
+        "deliverable_mapped_by": str(best.get("_match_method", "")).strip() or (methods_used[0] if methods_used else ""),
+        "acbos_count": acbos_count,
+        "mpdt_count": mpdt_count,
     }
 
 
@@ -406,9 +375,12 @@ def classify_targets(
     """
     Classify each target UAID_2 as MPDT or ACBOS.
 
-    matchup_map (optional): {uaid: mpdt_doc_stem} — when provided, UAIDs present
-    in the map are classified as MPDT immediately using the supplied document name.
-    ACBOS MPDT.xlsx is still consulted for version/revision metadata only.
+    matchup_map (optional): retained for backward-compatible call sites. Matchup
+    files provide output filenames after classification; they do not decide the
+    MPDT/ACBOS type here. AUTO classification priority is:
+      1. ProjectWise extract, preferably Input/ACBOS MPDT_FULLColumns.xlsx.
+      2. missing_in_pw_file_type when the UAID is not present in PW.
+      3. filename enrichment from matchup files in main.py.
 
     Returns dict with:
       mpdt_targets: [{uaid, file, status, notes}]
@@ -416,12 +388,8 @@ def classify_targets(
       conflicts: [{uaid, status, notes}]
       skipped: [{uaid, status, notes}]
     """
-    # Normalise matchup map for robust lookup (strip whitespace, preserve case)
-    _matchup: dict[str, str] = {
-        k.strip(): v.strip()
-        for k, v in (matchup_map or {}).items()
-        if k.strip() and v.strip()
-    }
+    # Matchup filenames are applied after type classification in main.py.
+    _ = matchup_map
     manual_map: dict[str, str] = cfg.get("uaid_type_map", {})
     not_in_pw_map: dict[str, str] = {
         k: str(v).strip().upper()
@@ -472,46 +440,6 @@ def classify_targets(
     for uaid in target_uaid2:
         uaid = uaid.strip()
         logger.info("--- Classifying UAID_2: %s ---", uaid)
-
-        # ------------------------------------------------------------------ #
-        # Matchup-file fast path: filename is already known → MPDT type       #
-        # Still look up ACBOS MPDT.xlsx for version/revision metadata only.   #
-        # ------------------------------------------------------------------ #
-        matchup_doc = _matchup.get(uaid)
-        if matchup_doc:
-            pw_ver = find_pw_version_by_docname(matchup_doc, pw_df, logger)
-            filename  = matchup_doc               # use matchup, not PW filename
-            filepath  = pw_ver["filepath"]  if pw_ver else ""
-            version   = pw_ver["version"]   if pw_ver else ""
-            file_date = pw_ver["file_date"] if pw_ver else ""
-            notes = f"matchup_file; doc={matchup_doc}"
-            if pw_ver:
-                notes += f"; pw_version={version}; pw_date={file_date}"
-            else:
-                notes += "; not_in_pw_extract (version unknown)"
-            logger.info("  => MPDT (MATCHUP) — %s", matchup_doc)
-            record = {
-                "uaid": uaid,
-                "outputfiletype": "MPDT",
-                "filename": filename,
-                "filepath": filepath,
-                "version": version,
-                "file_date": file_date,
-                "asset_name": uaid,
-                "acbos_doc": "",
-                "deliverable_mapped_by": "matchup_file",
-                "status": "MATCHUP",
-                "notes": notes,
-            }
-            csv_records.append(record)
-            mpdt_targets.append({
-                "uaid": uaid,
-                "file": filename,
-                "status": "MATCHUP",
-                "notes": notes,
-                "deliverable_mapped_by": "matchup_file",
-            })
-            continue  # skip normal classification logic for this UAID
 
         l2_info = get_l2_info(uaid, l2_df)
         asset_name = l2_info["asset_name"] or uaid

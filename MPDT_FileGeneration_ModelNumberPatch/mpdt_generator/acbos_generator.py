@@ -75,11 +75,11 @@ _ACBOS_PERMANENT_ATTRIBUTE_NAMES = [
     # exist, while flexible lookup below handles underscore/colon variants.
     "Com_Dsgnr",
     "Com_Cntrctr",
+    "Com_RfrncNmbr",
     "O&M_AsstSts",
 ]
 
 _RE_ATT_SEP = re.compile(r'[\s_\-\.:&]+')
-_REFERENCE_NONE_ATTRIBUTE_CODES = {"comrfrncnmbr"}
 _ZERO_GUID = '00000000-0000-0000-0000-000000000000'
 _XML_ILLEGAL_CHARS_RE = re.compile(
     '['
@@ -291,6 +291,82 @@ def extract_template_data(
     return AcbosTemplate(template_path, bins, metadata, attr_order, classes, set(metadata.keys()))
 
 
+def _merge_template_metadata(primary: AcbosTemplate, fallback: AcbosTemplate) -> AcbosTemplate:
+    """Return primary package data with missing attribute metadata from fallback."""
+    metadata = dict(primary.attr_metadata)
+    attr_order = list(primary.attr_order)
+    known_norms = set(metadata.keys())
+    known_codes = {_norm_att_code(m.get("Name", key)) for key, m in metadata.items()}
+
+    for name in fallback.attr_order:
+        norm_name = normalize_text(name)
+        meta = fallback.attr_metadata.get(norm_name)
+        if not meta:
+            continue
+        code = _norm_att_code(meta.get("Name") or name)
+        if norm_name in known_norms or code in known_codes:
+            continue
+        metadata[norm_name] = dict(meta)
+        attr_order.append(meta.get("Name") or name)
+        known_norms.add(norm_name)
+        known_codes.add(code)
+
+    classes = set(primary.classes) | set(fallback.classes)
+    return primary._replace(
+        attr_metadata=metadata,
+        attr_order=attr_order,
+        classes=classes,
+        allowed_attr_norms=set(metadata.keys()),
+    )
+
+
+def hydrate_template_metadata(
+    templates: list[AcbosTemplate],
+    workspace: Path,
+    cfg: dict,
+    extract_dir: Path,
+    logger: logging.Logger,
+) -> list[AcbosTemplate]:
+    """Add metadata from sibling templates when the selected master has no XML.
+
+    Some master ACBOS packages contain Setup.BIN/Key.BIN only. They are still
+    the correct package source, but MDM needs real DefinitionId/DefinitionWsGuid
+    values from an existing Data.XML schema template to display values such as
+    Com_RfrncNmbr instead of blanks.
+    """
+    if not templates:
+        return templates
+
+    tpl_dir = workspace / cfg.get("paths", {}).get("acbos_template_dir", "Input/ACBOS_Templates")
+    fallback_paths = sorted({p.resolve() for p in (list(tpl_dir.glob("*.ACBOS")) + list(tpl_dir.glob("*.acbos")))}) if tpl_dir.exists() else []
+    selected_paths = {t.path.resolve() for t in templates}
+    fallback_paths = [p.resolve() for p in fallback_paths if p.resolve() not in selected_paths]
+    if not fallback_paths:
+        return templates
+
+    hydrated = list(templates)
+    for fb_path in fallback_paths:
+        try:
+            fallback = extract_template_data(fb_path, extract_dir, logger)
+        except Exception as exc:
+            logger.warning("Could not read fallback ACBOS metadata template %s: %s", fb_path.name, exc)
+            continue
+        if not fallback.attr_metadata:
+            continue
+        next_templates = []
+        for template in hydrated:
+            before = len(template.attr_metadata)
+            merged = _merge_template_metadata(template, fallback)
+            added = len(merged.attr_metadata) - before
+            if added:
+                logger.info(
+                    "  Added %d ACBOS attribute metadata definitions to %s from %s",
+                    added, template.path.name, fb_path.name,
+                )
+            next_templates.append(merged)
+        hydrated = next_templates
+    return hydrated
+
 def find_templates(workspace: Path, cfg: dict, logger: logging.Logger) -> list[Path]:
     """Find ACBOS template files, sorted deterministically."""
     configured_file = cfg.get("paths", {}).get("acbos_template_file", "")
@@ -370,22 +446,20 @@ def _is_empty(v) -> bool:
     return s == "" or s.lower() in ("nan", "nat")
 
 
-def _is_reference_none_attribute(attr_name: Any) -> bool:
-    return _norm_att_code(attr_name) in _REFERENCE_NONE_ATTRIBUTE_CODES
 
 
 def _clean_acbos_output_value(v: Any, attr_name: Any = None) -> Any:
-    """Return a value ready for ACBOS XML, preserving required literal 'None'."""
+    """Return a value ready for ACBOS XML, preserving literal input text."""
     if v is None:
-        return "None" if _is_reference_none_attribute(attr_name) else None
+        return None
     try:
         if pd.isna(v):
-            return "None" if _is_reference_none_attribute(attr_name) else None
+            return None
     except Exception:
         pass
+    if isinstance(v, str) and v.strip().lower() in {"nan", "nat", "null"}:
+        return None
     return v
-
-
 def _value_from_row_by_normalized_name(row: pd.Series, norm_name: str) -> Any:
     found, value = _find_value_from_row_by_normalized_name(row, norm_name)
     return value if found else None
@@ -696,6 +770,7 @@ def generate_acbos_batch(
     with tempfile.TemporaryDirectory() as tmpdir:
         for tpl_path in tpl_paths:
             templates.append(extract_template_data(tpl_path, Path(tmpdir), logger))
+        templates = hydrate_template_metadata(templates, workspace, cfg, Path(tmpdir), logger)
 
         for target in targets:
             uaid2 = target["uaid"]
