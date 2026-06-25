@@ -1,0 +1,484 @@
+{
+  "projects": [
+    {
+      "projectCode": "CST",
+      "projectName": "Curzon Street",
+      "repositoryId": "04393dcf-1980-4741-a946-837064f8b3bf",
+      "datasource": "hs2-macedragados-pw.bentley.com:hs2-macedragados-pw-03",
+      "credentials": {
+        "wsgUserNameEnvVar": "PW_CST_USER",
+        "wsgPasswordEnvVar": "PW_CST_PASSWORD",
+        "pwUserNameEnvVar": "PW_CST_USER",
+        "pwPasswordEnvVar": "PW_CST_PASSWORD"
+      },
+      "wsg": {
+        "baseUrl": "https://kdot-pw-ws.bentley.com/ws",
+        "apiVersion": "v2.5",
+        "schema": "PW_WSG",
+        "verifySsl": true,
+        "classes": {
+          "user": "User",
+          "group": "UserGroup",
+          "list": "UserList"
+        },
+        "relationships": {
+          "userToGroup": {
+            "className": "UserHasGroup",
+            "direction": "forward"
+          },
+          "userToList": {
+            "className": "UserHasUserList",
+            "direction": "forward"
+          }
+        },
+        "properties": {
+          "userName": "UserName",
+          "email": "Email",
+          "description": "Description",
+          "password": "Password",
+          "imsUser": "IMSUser",
+          "groupName": "Name",
+          "listName": "Name"
+        }
+      },
+      "allowedUserGroups": [
+        "<-ADD HERE: CST-Admin groups/roles->"
+      ],
+      "allowedUserLists": [
+        "<-ADD HERE: CST-Team lists->"
+      ]
+    },
+    {
+      "projectCode": "M5J10",
+      "projectName": "M5 Junction 10",
+      "repositoryId": "<-ADD HERE->",
+      "datasource": "arcadis-uk-pw.bentley.com:Arcadis-UK-09",
+      "credentials": {
+        "wsgUserNameEnvVar": "PW_M5J10_USER",
+        "wsgPasswordEnvVar": "PW_M5J10_PASSWORD",
+        "pwUserNameEnvVar": "PW_M5J10_USER",
+        "pwPasswordEnvVar": "PW_M5J10_PASSWORD"
+      },
+      "wsg": {
+        "baseUrl": "https://kdot-pw-ws.bentley.com/ws",
+        "apiVersion": "v2.5",
+        "schema": "PW_WSG",
+        "verifySsl": true,
+        "classes": {
+          "user": "User",
+          "group": "UserGroup",
+          "list": "UserList"
+        },
+        "relationships": {
+          "userToGroup": {
+            "className": "UserHasGroup",
+            "direction": "forward"
+          },
+          "userToList": {
+            "className": "UserHasUserList",
+            "direction": "forward"
+          }
+        },
+        "properties": {
+          "userName": "UserName",
+          "email": "Email",
+          "description": "Description",
+          "password": "Password",
+          "imsUser": "IMSUser",
+          "groupName": "Name",
+          "listName": "Name"
+        }
+      },
+      "allowedUserGroups": [
+        "<-ADD HERE->"
+      ],
+      "allowedUserLists": [
+        "<-ADD HERE->"
+      ]
+    },
+    {
+      "projectCode": "WWHD",
+      "projectName": "West Winch",
+      "repositoryId": "<-ADD HERE->",
+      "datasource": "arcadis-uk-pw.bentley.com:Arcadis-UK-19",
+      "credentials": {
+        "wsgUserNameEnvVar": "PW_WWHD_USER",
+        "wsgPasswordEnvVar": "PW_WWHD_PASSWORD",
+        "pwUserNameEnvVar": "PW_WWHD_USER",
+        "pwPasswordEnvVar": "PW_WWHD_PASSWORD"
+      },
+      "wsg": {
+        "baseUrl": "https://kdot-pw-ws.bentley.com/ws",
+        "apiVersion": "v2.5",
+        "schema": "PW_WSG",
+        "verifySsl": true,
+        "classes": {
+          "user": "User",
+          "group": "UserGroup",
+          "list": "UserList"
+        },
+        "relationships": {
+          "userToGroup": {
+            "className": "UserHasGroup",
+            "direction": "forward"
+          },
+          "userToList": {
+            "className": "UserHasUserList",
+            "direction": "forward"
+          }
+        },
+        "properties": {
+          "userName": "UserName",
+          "email": "Email",
+          "description": "Description",
+          "password": "Password",
+          "imsUser": "IMSUser",
+          "groupName": "Name",
+          "listName": "Name"
+        }
+      },
+      "allowedUserGroups": [
+        "<-ADD HERE->"
+      ],
+      "allowedUserLists": [
+        "<-ADD HERE->"
+      ]
+    },
+    {
+      "projectCode": "MIDP",
+      "projectName": "MIDP (ASC)",
+      "repositoryId": "<-ADD HERE->",
+      "datasource": "arcadis-uk-pw.bentley.com:Arcadis-UK-07",
+      "credentials": {
+        "wsgUserNameEnvVar": "PW_MIDP_USER",
+        "wsgPasswordEnvVar": "PW_MIDP_PASSWORD",
+        "pwUserNameEnvVar": "ASC_PW_USERNAME",
+        "pwPasswordEnvVar": "ASC_PW_PASSWORD"
+      },
+      "wsg": {
+        "baseUrl": "https://kdot-pw-ws.bentley.com/ws",
+        "apiVersion": "v2.5",
+        "schema": "PW_WSG",
+        "verifySsl": true,
+        "classes": {
+          "user": "User",
+          "group": "UserGroup",
+          "list": "UserList"
+        },
+        "relationships": {
+          "userToGroup": {
+            "className": "UserHasGroup",
+            "direction": "forward"
+          },
+          "userToList": {
+            "className": "UserHasUserList",
+            "direction": "forward"
+          }
+        },
+        "properties": {
+          "userName": "UserName",
+          "email": "Email",
+          "description": "Description",
+          "password": "Password",
+          "imsUser": "IMSUser",
+          "groupName": "Name",
+          "listName": "Name"
+        }
+      },
+      "allowedUserGroups": [
+        "<-ADD HERE->"
+      ],
+      "allowedUserLists": [
+        "<-ADD HERE->"
+      ]
+    },
+    {
+      "projectCode": "EKFB",
+      "projectName": "EKFB Migration",
+      "repositoryId": "<-ADD HERE->",
+      "datasource": "ekfb-pw.bentley.com:ekfb-pw-01",
+      "credentials": {
+        "wsgUserNameEnvVar": "PW_EKFB_USER",
+        "wsgPasswordEnvVar": "PW_EKFB_PASSWORD",
+        "pwUserNameEnvVar": "EKFB_PW_USERNAME",
+        "pwPasswordEnvVar": "EKFB_PW_PASSWORD"
+      },
+      "wsg": {
+        "baseUrl": "<-ADD HERE: WSG base URL->",
+        "apiVersion": "v2.5",
+        "schema": "PW_WSG",
+        "verifySsl": true,
+        "classes": {
+          "user": "User",
+          "group": "UserGroup",
+          "list": "UserList"
+        },
+        "relationships": {
+          "userToGroup": {
+            "className": "UserHasGroup",
+            "direction": "forward"
+          },
+          "userToList": {
+            "className": "UserHasUserList",
+            "direction": "forward"
+          }
+        },
+        "properties": {
+          "userName": "UserName",
+          "email": "Email",
+          "description": "Description",
+          "password": "Password",
+          "imsUser": "IMSUser",
+          "groupName": "Name",
+          "listName": "Name"
+        }
+      },
+      "allowedUserGroups": [
+        "<-ADD HERE->"
+      ],
+      "allowedUserLists": [
+        "<-ADD HERE->"
+      ]
+    },
+    {
+      "projectCode": "CDE",
+      "projectName": "CDE WorkStream",
+      "repositoryId": "<-ADD HERE->",
+      "datasource": "arcadis-uk-pw.bentley.com:Arcadis-UK-13",
+      "credentials": {
+        "wsgUserNameEnvVar": "PW_CDE_USER",
+        "wsgPasswordEnvVar": "PW_CDE_PASSWORD",
+        "pwUserNameEnvVar": "PW_CDE_USER",
+        "pwPasswordEnvVar": "PW_CDE_PASSWORD"
+      },
+      "wsg": {
+        "baseUrl": "https://kdot-pw-ws.bentley.com/ws",
+        "apiVersion": "v2.5",
+        "schema": "PW_WSG",
+        "verifySsl": true,
+        "classes": {
+          "user": "User",
+          "group": "UserGroup",
+          "list": "UserList"
+        },
+        "relationships": {
+          "userToGroup": {
+            "className": "UserHasGroup",
+            "direction": "forward"
+          },
+          "userToList": {
+            "className": "UserHasUserList",
+            "direction": "forward"
+          }
+        },
+        "properties": {
+          "userName": "UserName",
+          "email": "Email",
+          "description": "Description",
+          "password": "Password",
+          "imsUser": "IMSUser",
+          "groupName": "Name",
+          "listName": "Name"
+        }
+      },
+      "allowedUserGroups": [
+        "<-ADD HERE->"
+      ],
+      "allowedUserLists": [
+        "<-ADD HERE->"
+      ]
+    },
+    {
+      "projectCode": "HIGHWAYS",
+      "projectName": "Highways",
+      "repositoryId": "<-ADD HERE->",
+      "datasource": "arcadis-uk-pw.bentley.com:arcadis-uk-09",
+      "credentials": {
+        "wsgUserNameEnvVar": "PW_HIGHWAYS_USER",
+        "wsgPasswordEnvVar": "PW_HIGHWAYS_PASSWORD",
+        "pwUserNameEnvVar": "_PWData_Extract",
+        "pwPasswordEnvVar": "PW_DATA_EXTRACT_PASSWORD"
+      },
+      "wsg": {
+        "baseUrl": "https://kdot-pw-ws.bentley.com/ws",
+        "apiVersion": "v2.5",
+        "schema": "PW_WSG",
+        "verifySsl": true,
+        "classes": {
+          "user": "User",
+          "group": "UserGroup",
+          "list": "UserList"
+        },
+        "relationships": {
+          "userToGroup": {
+            "className": "UserHasGroup",
+            "direction": "forward"
+          },
+          "userToList": {
+            "className": "UserHasUserList",
+            "direction": "forward"
+          }
+        },
+        "properties": {
+          "userName": "UserName",
+          "email": "Email",
+          "description": "Description",
+          "password": "Password",
+          "imsUser": "IMSUser",
+          "groupName": "Name",
+          "listName": "Name"
+        }
+      },
+      "allowedUserGroups": [
+        "<-ADD HERE->"
+      ],
+      "allowedUserLists": [
+        "<-ADD HERE->"
+      ]
+    },
+    {
+      "projectCode": "SKANSKA",
+      "projectName": "Skanska Infrastructure",
+      "repositoryId": "<-ADD HERE->",
+      "datasource": "sk-infra-uk-pw.bentley.com:sk-infra-uk-pw-11",
+      "credentials": {
+        "wsgUserNameEnvVar": "PW_SKANSKA_USER",
+        "wsgPasswordEnvVar": "PW_SKANSKA_PASSWORD",
+        "pwUserNameEnvVar": "PW_SKANSKA_USER",
+        "pwPasswordEnvVar": "PW_SKANSKA_PASSWORD"
+      },
+      "wsg": {
+        "baseUrl": "<-ADD HERE: WSG base URL->",
+        "apiVersion": "v2.5",
+        "schema": "PW_WSG",
+        "verifySsl": true,
+        "classes": {
+          "user": "User",
+          "group": "UserGroup",
+          "list": "UserList"
+        },
+        "relationships": {
+          "userToGroup": {
+            "className": "UserHasGroup",
+            "direction": "forward"
+          },
+          "userToList": {
+            "className": "UserHasUserList",
+            "direction": "forward"
+          }
+        },
+        "properties": {
+          "userName": "UserName",
+          "email": "Email",
+          "description": "Description",
+          "password": "Password",
+          "imsUser": "IMSUser",
+          "groupName": "Name",
+          "listName": "Name"
+        }
+      },
+      "allowedUserGroups": [
+        "<-ADD HERE->"
+      ],
+      "allowedUserLists": [
+        "<-ADD HERE->"
+      ]
+    },
+    {
+      "projectCode": "FRTP",
+      "projectName": "FRTP (Arcadis Canada)",
+      "repositoryId": "<-ADD HERE->",
+      "datasource": "ibi.bentley.com:Arcadis-Canada",
+      "credentials": {
+        "wsgUserNameEnvVar": "PW_FRTP_USER",
+        "wsgPasswordEnvVar": "PW_FRTP_PASSWORD",
+        "pwUserNameEnvVar": "PS_Users",
+        "pwPasswordEnvVar": "PW_FRTP_PASSWORD"
+      },
+      "wsg": {
+        "baseUrl": "<-ADD HERE: WSG base URL->",
+        "apiVersion": "v2.5",
+        "schema": "PW_WSG",
+        "verifySsl": true,
+        "classes": {
+          "user": "User",
+          "group": "UserGroup",
+          "list": "UserList"
+        },
+        "relationships": {
+          "userToGroup": {
+            "className": "UserHasGroup",
+            "direction": "forward"
+          },
+          "userToList": {
+            "className": "UserHasUserList",
+            "direction": "forward"
+          }
+        },
+        "properties": {
+          "userName": "UserName",
+          "email": "Email",
+          "description": "Description",
+          "password": "Password",
+          "imsUser": "IMSUser",
+          "groupName": "Name",
+          "listName": "Name"
+        }
+      },
+      "allowedUserGroups": [
+        "<-ADD HERE->"
+      ],
+      "allowedUserLists": [
+        "<-ADD HERE->"
+      ]
+    },
+    {
+      "projectCode": "HS2N1N2",
+      "projectName": "HS2 N1/N2 Sections",
+      "repositoryId": "<-ADD HERE->",
+      "datasource": "arcadis-uk-pw.bentley.com:Arcadis-UK-07",
+      "credentials": {
+        "wsgUserNameEnvVar": "PW_HS2N1N2_USER",
+        "wsgPasswordEnvVar": "PW_HS2N1N2_PASSWORD",
+        "pwUserNameEnvVar": "PW_HS2N1N2_USER",
+        "pwPasswordEnvVar": "PW_HS2N1N2_PASSWORD"
+      },
+      "wsg": {
+        "baseUrl": "https://kdot-pw-ws.bentley.com/ws",
+        "apiVersion": "v2.5",
+        "schema": "PW_WSG",
+        "verifySsl": true,
+        "classes": {
+          "user": "User",
+          "group": "UserGroup",
+          "list": "UserList"
+        },
+        "relationships": {
+          "userToGroup": {
+            "className": "UserHasGroup",
+            "direction": "forward"
+          },
+          "userToList": {
+            "className": "UserHasUserList",
+            "direction": "forward"
+          }
+        },
+        "properties": {
+          "userName": "UserName",
+          "email": "Email",
+          "description": "Description",
+          "password": "Password",
+          "imsUser": "IMSUser",
+          "groupName": "Name",
+          "listName": "Name"
+        }
+      },
+      "allowedUserGroups": [
+        "<-ADD HERE->"
+      ],
+      "allowedUserLists": [
+        "<-ADD HERE->"
+      ]
+    }
+  ]
+}
