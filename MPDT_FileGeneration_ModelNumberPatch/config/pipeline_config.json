@@ -155,6 +155,8 @@
         "ps1_upload": "Scripts/PWPS_Upload_PW.ps1",
         "generate_upload_metadata": true,
         "upload_metadata_filename": "PW_Upload_Metadata.xlsx",
+        "automation_revision_note": "Revised for Digital Technical Debt",
+        "upload_workflow_state": "Work in Progress",
         "default_folder": "",
         "upload_metadata_columns": [
             "DocumentName",

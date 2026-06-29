@@ -1,4 +1,4 @@
-﻿"""
+"""
 pw_processor/pw_metadata_generator.py - Build a ProjectWise upload metadata workbook.
 
 The workbook is generated during step6 next to the staged files in output_pw_<timestamp>.
@@ -18,7 +18,7 @@ import pandas as pd
 from utils.common import normalize_text, strip_acbos_suffix
 
 
-AUTOMATION_REVISION_NOTE = "updated from L3 database through automation"
+AUTOMATION_REVISION_NOTE = "Revised for Digital Technical Debt"
 
 DEFAULT_METADATA_COLUMNS = [
     "DocumentName",
@@ -100,7 +100,7 @@ def version_sort_key(value: Any) -> tuple[int, str, int, int, str]:
 
 
 def next_revision(current: str | None) -> str:
-    """Increment standard PW revisions such as P01 -> P02, P03.1 -> P03.2."""
+    """Increment ProjectWise work-in-progress revisions, e.g. P01 -> P01.2, P03 -> P03.1."""
     s = _as_text(current)
     if not s:
         return "P01"
@@ -108,9 +108,11 @@ def next_revision(current: str | None) -> str:
     if m:
         prefix = m.group(1)
         width = max(2, len(m.group(2)))
+        base = f"{prefix}{int(m.group(2)):0{width}d}"
         if m.group(3) is not None:
-            return f"{prefix}{int(m.group(2)):0{width}d}.{int(m.group(3)) + 1}"
-        return f"{prefix}{int(m.group(2)) + 1:0{width}d}"
+            return f"{base}.{int(m.group(3)) + 1}"
+        next_minor = 2 if int(m.group(2)) == 1 else 1
+        return f"{base}.{next_minor}"
     return s
 
 

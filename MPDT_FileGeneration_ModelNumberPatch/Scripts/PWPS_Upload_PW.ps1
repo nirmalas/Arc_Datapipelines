@@ -42,7 +42,9 @@ param(
     [string]$Version        = '',
     [string]$Application    = '',
     [string]$AttributesJson = '',
-    [string]$ProjectWiseBin = 'C:\Program Files\Bentley\ProjectWise\bin'
+    [string]$ProjectWiseBin = 'C:\Program Files\Bentley\ProjectWise\bin',
+    [string]$WorkflowState = 'Work in Progress',
+    [string]$RevisionNote = 'Revised for Digital Technical Debt'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -289,6 +291,96 @@ function Refresh-PWDocumentByGuid {
     }
     return $Doc
 }
+
+function Get-NextPWRevision {
+    param([string]$CurrentVersion)
+
+    if ([string]::IsNullOrWhiteSpace($CurrentVersion)) { return 'P01' }
+    $s = $CurrentVersion.Trim()
+    $m = [regex]::Match($s, '^([A-Za-z]+)\s*0*(\d+)(?:\.(\d+))?$')
+    if ($m.Success) {
+        $prefix = $m.Groups[1].Value
+        $digits = $m.Groups[2].Value
+        $width = [Math]::Max(2, $digits.Length)
+        $base = ('{0}{1:D' + $width + '}') -f $prefix, [int]$digits
+        if ($m.Groups[3].Success) {
+            return ('{0}.{1}' -f $base, ([int]$m.Groups[3].Value + 1))
+        }
+        $nextMinor = if ([int]$digits -eq 1) { 2 } else { 1 }
+        return ('{0}.{1}' -f $base, $nextMinor)
+    }
+    return $s
+}
+
+function Set-UploadRevisionAttributes {
+    param(
+        [hashtable]$Attributes,
+        [string]$Version,
+        [string]$Note
+    )
+
+    if (-not $Attributes) { return }
+    if (-not [string]::IsNullOrWhiteSpace($Version)) {
+        $Attributes['RV_V_1'] = $Version
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Note)) {
+        $Attributes['RV_N_1'] = $Note
+    }
+}
+
+function Set-PWDocumentWorkflowStateSafe {
+    param(
+        $Doc,
+        [string]$StateName
+    )
+
+    if (-not $Doc -or [string]::IsNullOrWhiteSpace($StateName)) { return $Doc }
+
+    $refreshed = Refresh-PWDocumentByGuid -Doc $Doc
+    if ($refreshed -and [string]$refreshed.WorkflowState -eq $StateName) {
+        Write-Host "  WorkflowState already set to '$StateName'."
+        return $refreshed
+    }
+
+    foreach ($cmdName in @('Set-PWDocumentState', 'Update-PWDocumentState', 'Set-PWWorkflowState')) {
+        $cmd = Get-Command $cmdName -ErrorAction SilentlyContinue
+        if (-not $cmd) { continue }
+
+        $attempts = @(
+            @{ InputDocuments = @($refreshed); StateName = $StateName },
+            @{ InputDocuments = @($refreshed); State = $StateName },
+            @{ InputDocument = @($refreshed); StateName = $StateName },
+            @{ InputDocument = @($refreshed); State = $StateName },
+            @{ Documents = @($refreshed); StateName = $StateName },
+            @{ Documents = @($refreshed); State = $StateName }
+        )
+
+        foreach ($attempt in $attempts) {
+            $valid = $true
+            foreach ($key in $attempt.Keys) {
+                if (-not $cmd.Parameters.ContainsKey($key)) {
+                    $valid = $false
+                    break
+                }
+            }
+            if (-not $valid) { continue }
+
+            try {
+                & $cmd @attempt | Out-Null
+                $updated = Refresh-PWDocumentByGuid -Doc $refreshed
+                if ($updated -and [string]$updated.WorkflowState -eq $StateName) {
+                    Write-Host "  WorkflowState set to '$StateName'."
+                    return $updated
+                }
+            } catch {
+                Write-Verbose "Workflow state attempt failed with ${cmdName}: $_"
+            }
+        }
+    }
+
+    Write-Warning "Could not set WorkflowState to '$StateName' with available pwps_dab commands."
+    return $refreshed
+}
 function Test-PWNativeRuntime {
     param(
         [string]$ProjectWiseBin = 'C:\Program Files\Bentley\ProjectWise\bin'
@@ -403,13 +495,20 @@ try {
 
     # Check if document already exists (version/update) or create new.
     $ExpectedNames = @($docNameToUse, $FileName, [System.IO.Path]::GetFileNameWithoutExtension($FileName))
-    $ExistingDoc = Find-PWDocumentForUpload -FolderPath $NormalizedFolderPath -ExpectedNames $ExpectedNames -TargetVersion $Version
+    $RequestedVersion = $Version
+    $ExistingDoc = Find-PWDocumentForUpload -FolderPath $NormalizedFolderPath -ExpectedNames $ExpectedNames -TargetVersion ''
 
     if ($ExistingDoc) {
         Write-Host "  Existing document found: $($ExistingDoc.Name) version $($ExistingDoc.Version)"
         $TargetDoc = $ExistingDoc
 
-        if (-not [string]::IsNullOrWhiteSpace($Version) -and [string]$ExistingDoc.Version -eq $Version) {
+        $Version = Get-NextPWRevision -CurrentVersion ([string]$ExistingDoc.Version)
+        if (-not [string]::IsNullOrWhiteSpace($RequestedVersion) -and [string]$RequestedVersion -ne [string]$Version) {
+            Write-Warning "Metadata requested version '$RequestedVersion', but latest ProjectWise revision is '$($ExistingDoc.Version)'. Upload will use next revision '$Version'."
+        }
+
+        $ExistingTargetVersion = Find-PWDocumentForUpload -FolderPath $NormalizedFolderPath -ExpectedNames $ExpectedNames -TargetVersion $Version
+        if ($ExistingTargetVersion -and [string]$ExistingTargetVersion.Version -eq [string]$Version) {
             throw "Target ProjectWise version '$Version' already exists for '$docNameToUse'. Refusing to replace an existing revision."
         }
 
@@ -456,10 +555,11 @@ try {
         }
 
         if ($AttributesMap -and (Get-Command Update-PWDocumentAttributes -ErrorAction SilentlyContinue)) {
+            Set-UploadRevisionAttributes -Attributes $AttributesMap -Version $Version -Note $RevisionNote
             Update-PWDocumentAttributes -InputDocuments @($TargetDoc) -Attributes $AttributesMap | Out-Null
         }
 
-        $refreshed = Refresh-PWDocumentByGuid -Doc $TargetDoc
+        $refreshed = Set-PWDocumentWorkflowStateSafe -Doc $TargetDoc -StateName $WorkflowState
         if (-not [string]::IsNullOrWhiteSpace($Version) -and [string]$refreshed.Version -ne $Version) {
             throw "Upload completed but ProjectWise version is '$($refreshed.Version)' instead of expected '$Version'."
         }

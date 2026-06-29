@@ -26,6 +26,7 @@ param(
     [string]$Password = $env:PW_PASSWORD,
     [string]$ProjectWiseBin = 'C:\Program Files\Bentley\ProjectWise\bin',
     [string]$UploadScript = '',
+    [string]$WorkflowState = 'Work in Progress',
     [switch]$KeepDownloads
 )
 
@@ -144,7 +145,19 @@ function Write-AttributesJson {
         'filetype','file type','fullpath','urn','pwfolderpath','pw folder path',
         'folderpath','folder path','localfilepath','local file path','filepath','file path',
         'stagedfile','sourcefile','extension','currentpwrevision','currentrevision',
-        'previousversion','nextversion','expectedrevision'
+        'previousversion','nextversion','expectedrevision',
+        'documentguid','projectguid','projectguidstring','projectid','documentid',
+        'documentstatus','documentoutto','documentouttoname','documentcheckoutdate',
+        'workflow','workflowstate','workflowid','stateid','applicationid','application',
+        'applicationname','documentupdater','documentupdatername','documentupdatedate',
+        'fileupdater','fileupdatername','fileupdated','fileupdatedate',
+        'documentcreator','documentcreatorname','createdate','documenturn',
+        'oldversion','oldname','oldfilename','olddescription','oldfullpath',
+        'checkedoutlocalfilename','copiedoutlocalfilename','isabstract','isset',
+        'documentownertype','documentownername','fullpathtostorageareafile',
+        'status','mimetype','storagename','storageid','projectwisewebviewlink',
+        'projectwiseweblink','webservicesgatewaydownloadlink','attributerecordcount',
+        'attributes','nestedreferencecount','customattributes'
     ) | ForEach-Object { Normalize-Key $_ }
 
     $attrs = [ordered]@{}
@@ -217,6 +230,7 @@ Write-Host "  DocumentName: $documentName"
 Write-Host "  Description: $description"
 Write-Host "  Version: $version"
 Write-Host "  PWFolderPath: $folderPath"
+Write-Host "  WorkflowState: $WorkflowState"
 Write-Host "  AttributesJson: $attrsJson"
 
 $uploadArgs = @(
@@ -230,7 +244,8 @@ $uploadArgs = @(
     '-Description', $description,
     '-Version', $version,
     '-AttributesJson', $attrsJson,
-    '-ProjectWiseBin', $ProjectWiseBin
+    '-ProjectWiseBin', $ProjectWiseBin,
+    '-WorkflowState', $WorkflowState
 )
 if (-not [string]::IsNullOrWhiteSpace($application)) {
     $uploadArgs += @('-Application', $application)
@@ -247,4 +262,3 @@ Write-Host "ProjectWise upload completed for $FileName"
 if (-not $KeepDownloads) {
     Remove-Item -LiteralPath $LocalWorkDir -Recurse -Force -ErrorAction SilentlyContinue
 }
-
