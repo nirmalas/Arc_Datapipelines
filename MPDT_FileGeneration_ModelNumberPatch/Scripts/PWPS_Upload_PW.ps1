@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Upload a generated ACBOS or MPDT file to ProjectWise.
 
@@ -157,6 +157,138 @@ function Write-DocumentSummary {
     [pscustomobject]$summary | Format-List
 }
 
+function Normalize-PWDocumentIdentity {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return ''
+    }
+
+    $name = (Split-Path -Leaf $Value).Trim()
+    try {
+        $name = [System.IO.Path]::GetFileNameWithoutExtension($name)
+    } catch {
+        # Keep the original value if PowerShell cannot parse it as a path.
+    }
+    return $name.Trim().ToLowerInvariant()
+}
+
+function Test-PWDocumentIdentityMatch {
+    param(
+        $Doc,
+        [string[]]$ExpectedNames
+    )
+
+    if (-not $Doc) { return $false }
+
+    $expected = @{}
+    foreach ($name in $ExpectedNames) {
+        $normalized = Normalize-PWDocumentIdentity -Value $name
+        if ($normalized) { $expected[$normalized] = $true }
+    }
+
+    foreach ($propName in @('Name', 'FileName', 'OldName', 'OldFileName')) {
+        if ($Doc.PSObject.Properties.Name -contains $propName) {
+            $normalized = Normalize-PWDocumentIdentity -Value ([string]$Doc.$propName)
+            if ($normalized -and $expected.ContainsKey($normalized)) {
+                return $true
+            }
+        }
+    }
+
+    return $false
+}
+
+function Get-UniquePWDocuments {
+    param([object[]]$Documents)
+
+    $seen = @{}
+    $unique = @()
+    foreach ($doc in @($Documents)) {
+        if (-not $doc) { continue }
+        $key = if ($doc.PSObject.Properties.Name -contains 'DocumentGUID' -and $doc.DocumentGUID) {
+            [string]$doc.DocumentGUID
+        } else {
+            "$(Normalize-PWDocumentIdentity -Value ([string]$doc.Name))|$($doc.Version)"
+        }
+        if (-not $seen.ContainsKey($key)) {
+            $seen[$key] = $true
+            $unique += $doc
+        }
+    }
+    return $unique
+}
+
+function Find-PWDocumentForUpload {
+    param(
+        [string]$FolderPath,
+        [string[]]$ExpectedNames,
+        [string]$TargetVersion
+    )
+
+    $allCandidates = @()
+    $searchCmd = Get-Command Get-PWDocumentsBySearch -ErrorAction Stop
+    $supportsFileName = $searchCmd.Parameters.ContainsKey('FileName')
+    $queries = @()
+
+    foreach ($name in $ExpectedNames) {
+        if ([string]::IsNullOrWhiteSpace($name)) { continue }
+        $leaf = (Split-Path -Leaf $name).Trim()
+        $base = Normalize-PWDocumentIdentity -Value $leaf
+        foreach ($q in @($leaf, $base, "*$base*")) {
+            if (-not [string]::IsNullOrWhiteSpace($q) -and $queries -notcontains $q) {
+                $queries += $q
+            }
+        }
+    }
+
+    foreach ($query in $queries) {
+        try {
+            if ($FolderPath) {
+                $allCandidates += @(Get-PWDocumentsBySearch -DocumentName $query -FolderPath $FolderPath -ErrorAction SilentlyContinue)
+            } else {
+                $allCandidates += @(Get-PWDocumentsBySearch -DocumentName $query -ErrorAction SilentlyContinue)
+            }
+        } catch { }
+
+        if ($supportsFileName) {
+            try {
+                if ($FolderPath) {
+                    $allCandidates += @(Get-PWDocumentsBySearch -FileName $query -FolderPath $FolderPath -ErrorAction SilentlyContinue)
+                } else {
+                    $allCandidates += @(Get-PWDocumentsBySearch -FileName $query -ErrorAction SilentlyContinue)
+                }
+            } catch { }
+        }
+    }
+
+    $exactMatches = @(Get-UniquePWDocuments -Documents $allCandidates | Where-Object {
+        Test-PWDocumentIdentityMatch -Doc $_ -ExpectedNames $ExpectedNames
+    })
+
+    if (-not $exactMatches -or $exactMatches.Count -eq 0) {
+        return $null
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($TargetVersion)) {
+        $sameVersion = @($exactMatches | Where-Object { [string]$_.Version -eq $TargetVersion })
+        if ($sameVersion.Count -gt 0) {
+            return ($sameVersion | Sort-Object VersionSequence -Descending | Select-Object -First 1)
+        }
+    }
+
+    return ($exactMatches | Sort-Object VersionSequence -Descending | Select-Object -First 1)
+}
+
+function Refresh-PWDocumentByGuid {
+    param($Doc)
+
+    if ($Doc -and $Doc.DocumentGUID -and (Get-Command Get-PWDocumentsByGUIDs -ErrorAction SilentlyContinue)) {
+        $refreshed = Get-PWDocumentsByGUIDs -DocumentGUIDs @([string]$Doc.DocumentGUID) -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($refreshed) { return $refreshed }
+    }
+    return $Doc
+}
 function Test-PWNativeRuntime {
     param(
         [string]$ProjectWiseBin = 'C:\Program Files\Bentley\ProjectWise\bin'
@@ -268,108 +400,73 @@ try {
         Write-Host "Resolved target folder: $($ResolvedFolder.FullPath)"
     }
 
-    if ($PWFolderPath) {
-        # New-PWDocument in pwps_dab uses FilePath + FolderPath
-        $UploadParams = @{
-            FilePath   = $FilePath
-            FolderPath = $NormalizedFolderPath
-        }
-    } else {
-        $UploadParams = @{
-            FilePath = $FilePath
-        }
-    }
 
-    # Check if document already exists (update) or create new
-    $ExistingDoc = $null
-    try {
-        # Use the intended ProjectWise document name for matching. The local
-        # staged file name can include an extension/suffix that is not part of
-        # the PW document name, especially for ACBOS files.
-        $basename = if ([string]::IsNullOrWhiteSpace($docNameToUse)) {
-            [System.IO.Path]::GetFileNameWithoutExtension($FileName)
-        } else {
-            [System.IO.Path]::GetFileNameWithoutExtension($docNameToUse)
-        }
-        $searchName = "*${basename}*"
-        if ($NormalizedFolderPath) {
-            $ExistingDoc = Get-PWDocumentsBySearch -DocumentName $searchName -FolderPath $NormalizedFolderPath |
-                           Select-Object -First 1
-        } else {
-            $ExistingDoc = Get-PWDocumentsBySearch -DocumentName $searchName |
-                           Select-Object -First 1
-        }
-    } catch { <# not found or search error #> }
+    # Check if document already exists (version/update) or create new.
+    $ExpectedNames = @($docNameToUse, $FileName, [System.IO.Path]::GetFileNameWithoutExtension($FileName))
+    $ExistingDoc = Find-PWDocumentForUpload -FolderPath $NormalizedFolderPath -ExpectedNames $ExpectedNames -TargetVersion $Version
 
     if ($ExistingDoc) {
-        Write-Host "  Updating existing document: $($ExistingDoc.Name)"
+        Write-Host "  Existing document found: $($ExistingDoc.Name) version $($ExistingDoc.Version)"
+        $TargetDoc = $ExistingDoc
+
+        if (-not [string]::IsNullOrWhiteSpace($Version) -and [string]$ExistingDoc.Version -eq $Version) {
+            throw "Target ProjectWise version '$Version' already exists for '$docNameToUse'. Refusing to replace an existing revision."
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($Version) -and [string]$ExistingDoc.Version -ne $Version) {
+            $newVersionCmd = Get-Command New-PWDocumentVersion -ErrorAction SilentlyContinue
+            if (-not $newVersionCmd) {
+                throw "Existing document version is $($ExistingDoc.Version), target version is $Version, but New-PWDocumentVersion is not available. Refusing to overwrite the existing version."
+            }
+
+            Write-Host "  Creating ProjectWise document version: $($ExistingDoc.Version) -> $Version"
+            $versionedDocs = @(New-PWDocumentVersion -InputDocument @($ExistingDoc) -VersionString $Version -ErrorAction Stop)
+            if ($versionedDocs.Count -gt 0) {
+                $TargetDoc = $versionedDocs | Select-Object -First 1
+            } else {
+                $TargetDoc = Find-PWDocumentForUpload -FolderPath $NormalizedFolderPath -ExpectedNames $ExpectedNames -TargetVersion $Version
+            }
+
+            if (-not $TargetDoc) {
+                throw "Created ProjectWise version $Version, but could not resolve the new version document."
+            }
+        }
+
+        $TargetDoc = Refresh-PWDocumentByGuid -Doc $TargetDoc
+        Write-Host "  Uploading file to document: $($TargetDoc.Name) version $($TargetDoc.Version)"
         if (Get-Command Send-PWFile -ErrorAction SilentlyContinue) {
-            Send-PWFile -DocumentGUID $ExistingDoc.DocumentGUID -LocalFileName $FilePath
+            Send-PWFile -DocumentGUID $TargetDoc.DocumentGUID -LocalFileName $FilePath
         } elseif (Get-Command Update-PWDocumentFile -ErrorAction SilentlyContinue) {
-            Update-PWDocumentFile -InputDocuments $ExistingDoc -NewFilePathName $FilePath -KeepExistingFileName
+            Update-PWDocumentFile -InputDocuments $TargetDoc -NewFilePathName $FilePath -KeepExistingFileName
         } else {
             throw 'No supported update cmdlet found (expected Send-PWFile or Update-PWDocumentFile).'
         }
 
         # Apply editable metadata after file update.
-        $ExistingDoc.Name = $docNameToUse
-        $ExistingDoc.Description = $descToUse
+        $TargetDoc = Refresh-PWDocumentByGuid -Doc $TargetDoc
+        $TargetDoc.Name = $docNameToUse
+        $TargetDoc.Description = $descToUse
         if (-not [string]::IsNullOrWhiteSpace($Version)) {
-            $ExistingDoc.Version = $Version
+            $TargetDoc.Version = $Version
         }
-        Update-PWDocumentProperties -InputDocument @($ExistingDoc) | Out-Null
+        Update-PWDocumentProperties -InputDocument @($TargetDoc) | Out-Null
 
         if (-not [string]::IsNullOrWhiteSpace($Application) -and (Get-Command Set-PWDocumentApplication -ErrorAction SilentlyContinue)) {
-            Set-PWDocumentApplication -InputDocuments @($ExistingDoc) -Application $Application | Out-Null
+            Set-PWDocumentApplication -InputDocuments @($TargetDoc) -Application $Application | Out-Null
         }
 
         if ($AttributesMap -and (Get-Command Update-PWDocumentAttributes -ErrorAction SilentlyContinue)) {
-            Update-PWDocumentAttributes -InputDocuments @($ExistingDoc) -Attributes $AttributesMap | Out-Null
+            Update-PWDocumentAttributes -InputDocuments @($TargetDoc) -Attributes $AttributesMap | Out-Null
         }
 
-        if ($ExistingDoc.DocumentGUID -and (Get-Command Get-PWDocumentsByGUIDs -ErrorAction SilentlyContinue)) {
-            $refreshed = Get-PWDocumentsByGUIDs -DocumentGUIDs @([string]$ExistingDoc.DocumentGUID) -ErrorAction SilentlyContinue | Select-Object -First 1
-            Write-DocumentSummary -Doc $refreshed
+        $refreshed = Refresh-PWDocumentByGuid -Doc $TargetDoc
+        if (-not [string]::IsNullOrWhiteSpace($Version) -and [string]$refreshed.Version -ne $Version) {
+            throw "Upload completed but ProjectWise version is '$($refreshed.Version)' instead of expected '$Version'."
         }
+        Write-DocumentSummary -Doc $refreshed
         Write-Host "  Updated OK."
     } else {
-        Write-Host "  Creating new document in PW."
-        try {
-            if (-not $UploadParams.ContainsKey('FolderPath') -and -not $UploadParams.ContainsKey('FilePath')) {
-                throw 'Internal error: upload parameters not populated.'
-            }
-
-            # Try the creation call that matches the installed pwps_dab signature.
-            # If that signature is not available, fail immediately instead of prompting interactively.
-            $createdDoc = $null
-            if ($ResolvedFolder) {
-                $createdDoc = $ResolvedFolder | New-PWDocument -FilePath $FilePath -DocumentName $docNameToUse -Description $descToUse -Version $Version -Application $Application -ErrorAction Stop
-            } else {
-                $createdDoc = New-PWDocument @UploadParams -DocumentName $docNameToUse -Description $descToUse -Version $Version -Application $Application -ErrorAction Stop
-            }
-
-            if ($createdDoc -and $createdDoc.DocumentGUID -and (Get-Command Get-PWDocumentsByGUIDs -ErrorAction SilentlyContinue)) {
-                $verified = Get-PWDocumentsByGUIDs -DocumentGUIDs @([string]$createdDoc.DocumentGUID) -ErrorAction SilentlyContinue
-                if ($verified) {
-                    $v = $verified | Select-Object -First 1
-                    Write-Host "  Created GUID: $($v.DocumentGUID)"
-                    Write-Host "  Created Name: $($v.Name)"
-                    Write-Host "  Created FolderPath: $($v.FolderPath)"
-                    Write-Host "  Created FileSize: $($v.FileSize)"
-
-                    if ($AttributesMap -and (Get-Command Update-PWDocumentAttributes -ErrorAction SilentlyContinue)) {
-                        Update-PWDocumentAttributes -InputDocuments @($v) -Attributes $AttributesMap | Out-Null
-                        $v = Get-PWDocumentsByGUIDs -DocumentGUIDs @([string]$v.DocumentGUID) -ErrorAction SilentlyContinue | Select-Object -First 1
-                    }
-
-                    Write-DocumentSummary -Doc $v
-                }
-            }
-            Write-Host "  Created OK."
-        } catch {
-            Write-Error "Upload failed creating a new document for $FileName : $_"
-            exit 1
-        }
+        throw "No existing ProjectWise document found in '$NormalizedFolderPath' for '$docNameToUse'. Refusing to create a new/duplicate document."
     }
 } catch {
     Write-Error "Upload failed for $FileName : $_"
@@ -382,4 +479,5 @@ try {
 try { Remove-PWLogin } catch { <# ignore #> }
 
 Write-Host "Upload complete: $FileName"
+
 

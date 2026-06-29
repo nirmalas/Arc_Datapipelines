@@ -69,7 +69,13 @@ class ModelContainerResolver:
     only when the filtering rules leave exactly one unique deliverable number.
     """
 
-    def __init__(self, midp_df: pd.DataFrame | None, pw_df: pd.DataFrame | None = None, logger: logging.Logger | None = None):
+    def __init__(
+        self,
+        midp_df: pd.DataFrame | None,
+        pw_df: pd.DataFrame | None = None,
+        dm3_df: pd.DataFrame | None = None,
+        logger: logging.Logger | None = None,
+    ):
         self.logger = logger
         self.midp_df = midp_df.copy() if midp_df is not None and not midp_df.empty else pd.DataFrame()
         self.asset_col = _pick_column(self.midp_df, ("Assets", "Asset", "Asset ID", "Asset_ID", "UAID", "UAID_2")) if not self.midp_df.empty else None
@@ -78,6 +84,7 @@ class ModelContainerResolver:
         self.description_col = _pick_column(self.midp_df, ("Description", "Deliverable Name", "Deliverable Description", "Name")) if not self.midp_df.empty else None
         self.discipline_col = _pick_column(self.midp_df, ("Discipline", "Disc", "Discipline Code", "Discipline_Code")) if not self.midp_df.empty else None
         self.pw_document_tokens = _document_tokens_from_pw_extract(pw_df)
+        self.dm3_document_tokens, self.dm3_solid_tokens = self._document_tokens_from_dm3_extract(dm3_df)
 
         if not self.midp_df.empty and (not self.asset_col or not self.deliverable_col):
             if self.logger:
@@ -126,6 +133,42 @@ class ModelContainerResolver:
             return ""
         parts = [p.strip().upper() for p in Path(str(value).strip()).stem.split("-") if p.strip()]
         return parts[2][:2] if len(parts) >= 3 else ""
+
+    @staticmethod
+    def _document_tokens_from_dm3_extract(dm3_df: pd.DataFrame | None) -> tuple[set[str], set[str]]:
+        """Return all current DM3 document tokens and tokens that look like solids."""
+        if dm3_df is None or dm3_df.empty:
+            return set(), set()
+
+        name_col = _pick_column(dm3_df, ("Name", "Doc. Reference", "DocumentName", "Document Name", "Deliverable No", "Deliverable Number"))
+        file_col = _pick_column(dm3_df, ("File Name", "FileName"))
+        desc_col = _pick_column(dm3_df, ("Description", "Title", "Folder Description"))
+        cols = [c for c in (name_col, file_col) if c]
+        if not cols:
+            return set(), set()
+
+        all_tokens: set[str] = set()
+        solid_tokens: set[str] = set()
+        for _, row in dm3_df.iterrows():
+            row_tokens: set[str] = set()
+            for col in cols:
+                raw = row.get(col, "")
+                if _is_empty(raw):
+                    continue
+                text = str(raw).strip().upper()
+                stem = Path(text).stem.upper()
+                if stem:
+                    row_tokens.add(stem)
+                if text:
+                    row_tokens.add(text)
+            if not row_tokens:
+                continue
+
+            all_tokens.update(row_tokens)
+            desc = str(row.get(desc_col, "")).strip().lower() if desc_col else ""
+            if "solid" in desc and not re.search(r"withdrawn|not in use|civil 3d native", desc):
+                solid_tokens.update(row_tokens)
+        return all_tokens, solid_tokens
 
     @staticmethod
     def _asset_items(value: Any) -> list[str]:
@@ -212,6 +255,16 @@ class ModelContainerResolver:
         mask = df.apply(lambda row: row_disc(row) == disc, axis=1)
         return df[mask]
 
+    def _filter_by_token_set(self, df: pd.DataFrame, tokens: set[str]) -> pd.DataFrame:
+        if df is None or df.empty or not self.deliverable_col or not tokens:
+            return pd.DataFrame()
+        return df[
+            df[self.deliverable_col]
+            .fillna("")
+            .astype(str)
+            .map(lambda v: Path(v.strip()).stem.upper() in tokens or v.strip().upper() in tokens)
+        ]
+
     def resolve(self, uaid2: str, discipline: str | None = None) -> str:
         """Return the unique DM3 deliverable number for UAID_2, or blank."""
         candidates = self._base_candidates(uaid2)
@@ -224,6 +277,18 @@ class ModelContainerResolver:
         discipline_candidates = self._filter_by_discipline(candidates, discipline)
         if not discipline_candidates.empty:
             candidates = discipline_candidates
+
+        if self.dm3_document_tokens:
+            dm3_matched = self._filter_by_token_set(candidates, self.dm3_document_tokens)
+            if not dm3_matched.empty:
+                dm3_solid = self._filter_by_token_set(dm3_matched, self.dm3_solid_tokens)
+                one = self._unique_deliverable(dm3_solid)
+                if one:
+                    return one
+                one = self._unique_deliverable(dm3_matched)
+                if one:
+                    return one
+                candidates = dm3_matched
 
         one = self._unique_deliverable(candidates)
         if one:
@@ -266,6 +331,8 @@ class ModelContainerResolver:
                 "MIDP_Deliverable_Type": "",
                 "MIDP_Asset_Count": 0,
                 "Has_Zero_Prefixed_Final_Sequence": False,
+                "Present_In_All_Current_DM3": False,
+                "Solid_In_All_Current_DM3": False,
                 "Matched_Discipline": False,
                 "Contains_Solid": False,
                 "Resolved_Model_Container_ID": "",
@@ -289,6 +356,8 @@ class ModelContainerResolver:
                 "MIDP_Deliverable_Type": "",
                 "MIDP_Asset_Count": 0,
                 "Has_Zero_Prefixed_Final_Sequence": False,
+                "Present_In_All_Current_DM3": False,
+                "Solid_In_All_Current_DM3": False,
                 "Matched_Discipline": False,
                 "Contains_Solid": False,
                 "Resolved_Model_Container_ID": "",
@@ -305,6 +374,10 @@ class ModelContainerResolver:
                 midp_disc = self._discipline_from_midp_deliverable(deliverable)
             desc = str(row.get(self.description_col, "")).strip() if self.description_col else ""
             deliverable_type = str(row.get(self.deliverable_type_col, "")).strip() if self.deliverable_type_col else ""
+            deliverable_token = Path(deliverable).stem.upper()
+            deliverable_upper = deliverable.upper()
+            present_in_dm3 = deliverable_token in self.dm3_document_tokens or deliverable_upper in self.dm3_document_tokens
+            solid_in_dm3 = deliverable_token in self.dm3_solid_tokens or deliverable_upper in self.dm3_solid_tokens
             records.append({
                 "UAID_2": uaid2,
                 "MPDT_Discipline": disc,
@@ -314,6 +387,8 @@ class ModelContainerResolver:
                 "MIDP_Deliverable_Type": deliverable_type,
                 "MIDP_Asset_Count": len(self._asset_items(row.get(self.asset_col, ""))) if self.asset_col else 0,
                 "Has_Zero_Prefixed_Final_Sequence": self._has_zero_prefixed_final_sequence(deliverable),
+                "Present_In_All_Current_DM3": present_in_dm3,
+                "Solid_In_All_Current_DM3": solid_in_dm3,
                 "Matched_Discipline": bool(disc and midp_disc == disc),
                 "Contains_Solid": "solid" in desc.lower(),
                 "Resolved_Model_Container_ID": resolved,
@@ -516,5 +591,10 @@ class AllCurrentDM3Resolver:
 def build_all_current_dm3_resolver(dm3_df: pd.DataFrame | None, logger: logging.Logger | None = None) -> AllCurrentDM3Resolver:
     return AllCurrentDM3Resolver(dm3_df, logger)
 
-def build_model_container_resolver(midp_df: pd.DataFrame | None, pw_df: pd.DataFrame | None, logger: logging.Logger | None = None) -> ModelContainerResolver:
-    return ModelContainerResolver(midp_df, pw_df, logger)
+def build_model_container_resolver(
+    midp_df: pd.DataFrame | None,
+    pw_df: pd.DataFrame | None,
+    dm3_df: pd.DataFrame | None = None,
+    logger: logging.Logger | None = None,
+) -> ModelContainerResolver:
+    return ModelContainerResolver(midp_df, pw_df, dm3_df, logger)

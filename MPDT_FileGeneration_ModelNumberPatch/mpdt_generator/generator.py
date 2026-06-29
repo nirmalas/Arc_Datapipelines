@@ -88,6 +88,14 @@ def _clean_mpdt_output_value(val: Any) -> Any:
     return val
 
 
+def _map_dataframe_values(df: pd.DataFrame, func) -> pd.DataFrame:
+    """Apply a scalar function to every DataFrame value on pandas 2 and 3."""
+    mapper = getattr(df, "map", None)
+    if mapper is not None:
+        return mapper(func)
+    return df.applymap(func)
+
+
 def is_applicable(att_tst: Any, asset_type: Any) -> bool:
     """
     Mirrors the notebook VBA logic exactly:
@@ -610,7 +618,7 @@ def _apply_round2(
     # 0. Normalise MPDT-only blank literals. Do NOT treat literal 'None'
     #    as missing; it is a valid L3 database value.
     # ------------------------------------------------------------------ #
-    df = df.applymap(_clean_mpdt_output_value)
+    df = _map_dataframe_values(df, _clean_mpdt_output_value)
 
     # ------------------------------------------------------------------ #
     # 1. Discipline = 3rd segment of deliverable_name (split on '-')       #
@@ -2011,7 +2019,7 @@ def generate_mpdt_batch(
     lodm_indexes = _build_lodm_lookup_indexes(lodm_df)
     all_lodm_att_norms: set[str] = lodm_indexes.get("all_lodm_att_norms", set())
 
-    model_container_resolver = build_model_container_resolver(midp_df, pw_df, logger)
+    model_container_resolver = build_model_container_resolver(midp_df, pw_df, dm3_df, logger)
     dm3_model_container_resolver = build_all_current_dm3_resolver(dm3_df, logger)
 
     indexes = {

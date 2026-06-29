@@ -9,3 +9,4 @@ MPDT_FileGeneration_ModelNumberPatch/**/__pycache__/*
 MPDT_FileGeneration_ModelNumberPatch/**/*.pyc
 MPDT_FileGeneration_ModelNumberPatch/Input/DB_Cache/*.meta.json
 MPDT_FileGeneration_ModelNumberPatch/Input/All_Current_DM3_files.xlsx
+*.ACBOS

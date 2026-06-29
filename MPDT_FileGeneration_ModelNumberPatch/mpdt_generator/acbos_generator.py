@@ -369,7 +369,29 @@ def hydrate_template_metadata(
 
 def find_templates(workspace: Path, cfg: dict, logger: logging.Logger) -> list[Path]:
     """Find ACBOS template files, sorted deterministically."""
-    configured_file = cfg.get("paths", {}).get("acbos_template_file", "")
+    paths_cfg = cfg.get("paths", {})
+    tpl_dir = workspace / paths_cfg.get("acbos_template_dir", "Input/ACBOS_Templates")
+
+    project_templates: list[Path] = []
+    for key, default_name in (
+        ("acbos_template_c2", "C2-ASC-MASTER-L3V4_TLC5-ACBOS.ACBOS"),
+        ("acbos_template_c3", "C3-ASC-MASTER-L3V4_TLC5-ACBOS.ACBOS"),
+    ):
+        rel = str(paths_cfg.get(key) or "").strip()
+        template_path = (workspace / rel).resolve() if rel else (tpl_dir / default_name).resolve()
+        if template_path.exists() and template_path not in project_templates:
+            project_templates.append(template_path)
+        elif rel:
+            logger.warning("Configured ACBOS template not found for %s: %s", key, template_path)
+
+    if project_templates:
+        logger.info(
+            "Using project-specific ACBOS templates: %s",
+            ", ".join(p.name for p in project_templates),
+        )
+        return sorted(project_templates)
+
+    configured_file = paths_cfg.get("acbos_template_file", "")
     if configured_file:
         template_path = (workspace / configured_file).resolve()
         if template_path.exists():
@@ -377,7 +399,6 @@ def find_templates(workspace: Path, cfg: dict, logger: logging.Logger) -> list[P
             return [template_path]
         logger.warning("Configured ACBOS template not found: %s", template_path)
 
-    tpl_dir = workspace / cfg.get("paths", {}).get("acbos_template_dir", "Input/ACBOS_Templates")
     if tpl_dir.exists():
         candidates = sorted(list(tpl_dir.glob("*.ACBOS")) + list(tpl_dir.glob("*.acbos")))
         if candidates:
@@ -412,20 +433,35 @@ def choose_template_for_rows(
 
     deliverable_upper = Path(deliverable_file or "").name.upper()
     row_classes = _row_classes(rows)
+    project_code = ""
+    if deliverable_upper.startswith("1MC06"):
+        project_code = "C2"
+    elif deliverable_upper.startswith("1MC07"):
+        project_code = "C3"
 
-    def score(tpl: AcbosTemplate) -> tuple[int, int, int]:
-        # Prefer templates whose discipline/document token appears in the deliverable name.
+    def score(tpl: AcbosTemplate) -> tuple[int, int, int, int]:
+        # Prefer C2/C3 master templates from the controlling ACBOS document name:
+        # 1MC06 -> C2, 1MC07 -> C3.
+        stem_upper = tpl.path.stem.upper()
+        project_score = 0
+        if project_code:
+            if stem_upper.startswith(f"{project_code}-") or stem_upper.startswith(f"{project_code}_"):
+                project_score = 100
+            elif stem_upper.startswith("C23-"):
+                project_score = 10
+
+        # Then prefer templates whose discipline/document token appears in the deliverable name.
         # Example: template "...-BR-..." should beat "...-CV-..." for a BR deliverable.
-        name_tokens = re.split(r"[-_ .]+", tpl.path.stem.upper())
+        name_tokens = re.split(r"[-_ .]+", stem_upper)
         token_score = sum(1 for token in name_tokens if token and token in deliverable_upper)
         class_score = len(row_classes & tpl.classes)
         attr_score = len(tpl.attr_order)
-        return (token_score, class_score, attr_score)
+        return (project_score, token_score, class_score, attr_score)
 
     chosen = max(templates, key=score)
     logger.info(
-        "  Using ACBOS template %s for classes=%s",
-        chosen.path.name, ",".join(sorted(row_classes)) or "<none>",
+        "  Using ACBOS template %s for project=%s classes=%s",
+        chosen.path.name, project_code or "<unknown>", ",".join(sorted(row_classes)) or "<none>",
     )
     return chosen
 

@@ -183,14 +183,16 @@
         "sample_mpdt": "Input/1MC07-CEK-BR-FRM-CS07_CL26-000005.xlsm",
         "smartforms_fallback": "Input/SmartForms_RAW_MPDT_L2&L3.xlsx",
         "acbos_template_dir": "Input/ACBOS_Templates",
-        "tracker_sep2025": "Input/JSON Works Tracker_Sep 2025 Onwards .xlsx",
+        "tracker_sep2025": "Input/JSON Works Tracker_Sep 2025 Onwards.xlsx",
         "tracker_2025": "Input/JSON Works Tracker 2025.xlsx",
         "tracker_2024": "Input/JSON Works Tracker 2024.xlsx",
         "db_cache_dir": "Input/DB_Cache",
         "midp_navigator": "Input/MIDP_Navigator.xlsx",
         "acbos_template_file": "Input/ACBOS_Templates/C23-ASC-MASTER-L3V4_TLC5-ACBOS.ACBOS",
         "pw_extract_full_columns": "Input/ACBOS MPDT_FULLColumns.xlsx",
-        "all_current_dm3_files": "Input/All_Current_DM3_files.xlsx"
+        "all_current_dm3_files": "Input/All_Current_DM3_files.xlsx",
+        "acbos_template_c2": "Input/ACBOS_Templates/C2-ASC-MASTER-L3V4_TLC5-ACBOS.ACBOS",
+        "acbos_template_c3": "Input/ACBOS_Templates/C3-ASC-MASTER-L3V4_TLC5-ACBOS.ACBOS"
     },
     "tracker_sheet_name": "Central_Team",
     "publish": false,
