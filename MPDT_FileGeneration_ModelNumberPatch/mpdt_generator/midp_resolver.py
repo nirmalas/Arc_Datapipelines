@@ -5,9 +5,10 @@ The resolver implements the business rule used by MPDT generation:
   2. Keep only rows where that Assets cell contains one asset.
   3. Keep only deliverables whose final 6-digit sequence starts with 0.
   4. Keep only DM3 model deliverables.
-  5. If several remain, prefer rows whose description/name contains "solid".
-  6. If several still remain, cross-check against ACBOS MPDT / ProjectWise extract.
-  7. Return one unique deliverable number, otherwise blank.
+  5. If All_Current_DM3_files confirms one unique/solid current DM3, use it.
+  6. Otherwise prefer MIDP rows whose description/name contains "solid".
+  7. If several still remain, cross-check against ACBOS MPDT / ProjectWise extract.
+  8. Return one unique deliverable number, otherwise blank.
 """
 from __future__ import annotations
 
@@ -288,13 +289,14 @@ class ModelContainerResolver:
                 one = self._unique_deliverable(dm3_matched)
                 if one:
                     return one
-                candidates = dm3_matched
+                # Do not make the DM3 export a hard final gate. It is often
+                # incomplete for valid MIDP models, so keep the wider MIDP
+                # candidate set and let the solids/name rules below decide.
 
-        one = self._unique_deliverable(candidates)
-        if one:
-            return one
-
-        # Prefer rows whose description/name contains "solid".
+        # Prefer rows whose MIDP description/name contains "solid", even when
+        # those rows are not present in All_Current_DM3_files. This handles
+        # valid model containers named "Solids" that are absent from the
+        # current DM3 export.
         if self.description_col:
             desc_text = candidates[self.description_col].fillna("").astype(str)
             solid = candidates[desc_text.str.contains("solid", case=False, na=False)]
@@ -303,6 +305,10 @@ class ModelContainerResolver:
                 return one
             if not solid.empty:
                 candidates = solid
+
+        one = self._unique_deliverable(candidates)
+        if one:
+            return one
 
         # Cross-check against ACBOS MPDT / ProjectWise extract.
         if self.pw_document_tokens:
